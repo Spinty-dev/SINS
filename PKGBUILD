@@ -4,13 +4,13 @@ pkgver=0.1
 pkgrel=1
 pkgdesc="SINS Is Not Systemd - a modular systemd-to-runit shim with D-Bus and Cgroups support"
 arch=('x86_64' 'aarch64')
-url="https://github.com/example/sins"
+url="https://github.com/Spinty-dev/SINS"
 license=('MIT')
 depends=('runit' 'dbus')
 makedepends=('go' 'git')
 provides=('systemd-shim' 'systemctl-shim')
 conflicts=('systemd-shim' 'systemctl-shim')
-source=("git+https://github.com/example/sins.git")
+source=("git+https://github.com/Spinty-dev/SINS.git")
 md5sums=('SKIP')
 
 build() {
