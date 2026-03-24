@@ -58,6 +58,13 @@ For AUR-compatible distributions, use the provided `PKGBUILD`:
 makepkg -si
 ```
 
+### 4. Package Management (Arch Linux)
+To prevent `systemd` updates from overwriting the SINS shim, it is recommended to add `systemd` to `IgnorePkg` in your `/etc/pacman.conf`:
+```ini
+[options]
+IgnorePkg = systemd
+```
+
 ---
 
 ## 🧬 Usage

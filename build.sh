@@ -13,17 +13,23 @@ if [[ -z "$SINS_CHOICE" ]]; then
         exit 0
     fi
 
-    echo "SINS - SINS Is Not Systemd: Modular Build"
-    echo "-----------------------------------------"
-    echo "Select modules to include (comma-separated, e.g. 1,3,5):"
-    echo "1. D-Bus Bridge (org.freedesktop.systemd1)"
-    echo "2. Socket Activation (socket binding)"
-    echo "3. Timers (timer daemon)"
-    echo "4. Notify Socket (/run/systemd/notify)"
-    echo "5. Cgroups v2 (Resource Limits)"
-    echo "0. ALL"
-    echo "-----------------------------------------"
-    read -p "Your choice: " SINS_CHOICE
+    # Check if we have a TTY for interactive build
+    if [[ -t 0 ]]; then
+        echo "SINS - SINS Is Not Systemd: Modular Build"
+        echo "-----------------------------------------"
+        echo "Select modules to include (comma-separated, e.g. 1,3,5):"
+        echo "1. D-Bus Bridge (org.freedesktop.systemd1)"
+        echo "2. Socket Activation (socket binding)"
+        echo "3. Timers (timer daemon)"
+        echo "4. Notify Socket (/run/systemd/notify)"
+        echo "5. Cgroups v2 (Resource Limits)"
+        echo "0. ALL"
+        echo "-----------------------------------------"
+        read -p "Your choice: " SINS_CHOICE
+    else
+        echo "Non-interactive environment detected. Using default (0: ALL)."
+        SINS_CHOICE=0
+    fi
 fi
 
 tags=""

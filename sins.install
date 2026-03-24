@@ -1,0 +1,16 @@
+post_install() {
+  echo ">>> SINS (SINS Is Not Systemd) has been installed."
+  echo ">>> "
+  echo ">>> IMPORTANT: To prevent systemd updates from overwriting the shim,"
+  echo ">>> consider adding 'systemd' to IgnorePkg in /etc/pacman.conf:"
+  echo ">>> "
+  echo ">>> [options]"
+  echo ">>> IgnorePkg = systemd"
+  echo ">>> "
+  echo ">>> If you want SINS to automatically handle D-Bus and Notify,"
+  echo ">>> enable and start sins-daemon via runit."
+}
+
+post_upgrade() {
+  post_install
+}

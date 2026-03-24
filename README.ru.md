@@ -58,6 +58,13 @@ SINS_CHOICE=0 ./build.sh
 makepkg -si
 ```
 
+### 4. Управление пакетами (Arch Linux)
+Чтобы обновления `systemd` не перезаписывали прослойку SINS, рекомендуется добавить `systemd` в `IgnorePkg` в вашем `/etc/pacman.conf`:
+```ini
+[options]
+IgnorePkg = systemd
+```
+
 ---
 
 ## 🧬 Использование

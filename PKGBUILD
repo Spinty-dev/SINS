@@ -12,11 +12,11 @@ provides=('systemd-shim' 'systemctl-shim')
 conflicts=('systemd-shim' 'systemctl-shim')
 source=("git+https://github.com/Spinty-dev/SINS.git")
 md5sums=('SKIP')
+install=sins.install
 
 build() {
   cd "$srcdir/SINS"
-  # SINS_CHOICE=0 builds all modules (D-Bus, Timers, Sockets, Notify, Cgroups)
-  export SINS_CHOICE=0
+  # SINS_CHOICE will be prompted by build.sh if not set
   ./build.sh
 }
 
