@@ -188,8 +188,10 @@ func handleAction(mgr *runit.Manager, name string, svCmd string, autoCreate bool
 		ensureServiceExists(mgr, name)
 	}
 
-	if err := mgr.WaitForService(cleanName, 5); err != nil {
-		fmt.Printf("Warning: %v. Runit might still be initializing the service.\n", err)
+	if svCmd == "start" || svCmd == "restart" {
+		if err := mgr.WaitForService(cleanName, 5); err != nil {
+			fmt.Printf("Warning: %v. Runit might still be initializing the service.\n", err)
+		}
 	}
 
 	cmd := exec.Command("sv", svCmd, cleanName)

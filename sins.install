@@ -7,10 +7,35 @@ post_install() {
   echo ">>> [options]"
   echo ">>> IgnorePkg = systemd"
   echo ">>> "
-  echo ">>> If you want SINS to automatically handle D-Bus and Notify,"
-  echo ">>> enable and start sins-daemon via runit."
+  
+  # Auto-enable sins-daemon
+  if [ -d /run/runit/service ]; then
+      SV_DIR="/run/runit/service"
+  else
+      SV_DIR="/var/service"
+  fi
+  
+  if [ ! -L "$SV_DIR/sins-daemon" ]; then
+      echo ">>> Enabling sins-daemon in $SV_DIR..."
+      ln -s /etc/runit/sv/sins-daemon "$SV_DIR/sins-daemon"
+      echo ">>> SINS daemon enabled and starting."
+  fi
 }
 
 post_upgrade() {
   post_install
+}
+
+post_remove() {
+  # Clean up sins-daemon symlink
+  if [ -d /run/runit/service ]; then
+      SV_DIR="/run/runit/service"
+  else
+      SV_DIR="/var/service"
+  fi
+  
+  if [ -L "$SV_DIR/sins-daemon" ]; then
+      echo ">>> Disabling sins-daemon..."
+      rm "$SV_DIR/sins-daemon"
+  fi
 }

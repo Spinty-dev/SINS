@@ -35,4 +35,7 @@ package() {
   if [ -f build/sins-sockets ]; then
     install -Dm755 build/sins-sockets "$pkgdir/usr/bin/sins-sockets"
   fi
+
+  # Install runit service for SINS daemon
+  install -Dm755 sins-daemon.run "$pkgdir/etc/runit/sv/sins-daemon/run"
 }
