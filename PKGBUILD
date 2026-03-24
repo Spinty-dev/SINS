@@ -14,14 +14,14 @@ source=("git+https://github.com/Spinty-dev/SINS.git")
 md5sums=('SKIP')
 
 build() {
-  cd "$srcdir/sins"
+  cd "$srcdir/SINS"
   # SINS_CHOICE=0 builds all modules (D-Bus, Timers, Sockets, Notify, Cgroups)
   export SINS_CHOICE=0
   ./build.sh
 }
 
 package() {
-  cd "$srcdir/sins"
+  cd "$srcdir/SINS"
   install -Dm755 build/systemctl "$pkgdir/usr/bin/systemctl"
   
   if [ -f build/sins-daemon ]; then
