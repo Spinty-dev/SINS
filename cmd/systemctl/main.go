@@ -188,10 +188,8 @@ func handleAction(mgr *runit.Manager, name string, svCmd string, autoCreate bool
 		ensureServiceExists(mgr, name)
 	}
 
-	if svCmd == "start" || svCmd == "restart" {
-		if err := mgr.WaitForService(cleanName, 5); err != nil {
-			fmt.Printf("Warning: %v. Runit might still be initializing the service.\n", err)
-		}
+	if err := mgr.WaitForService(cleanName, 5); err != nil {
+		fmt.Printf("Warning: %v. Runit might still be initializing the service.\n", err)
 	}
 
 	cmd := exec.Command("sv", svCmd, cleanName)
@@ -254,6 +252,22 @@ func handleStatus(mgr *runit.Manager, name string, follow bool) {
 	fmt.Print(string(output))
 	isActive := strings.HasPrefix(string(output), "run:")
 
+	if !isActive {
+		// Try to recover if enabled
+		enablePath := filepath.Join(mgr.EnableDir, cleanName)
+		if _, err := os.Lstat(enablePath); err == nil {
+			exec.Command("sv", "start", cleanName).Run()
+			// Check again
+			cmd = exec.Command("sv", "status", cleanName)
+			output, _ = cmd.CombinedOutput()
+			isActive = strings.HasPrefix(string(output), "run:")
+			if isActive {
+				fmt.Println("Recovered status (started automatically):")
+				fmt.Print(string(output))
+			}
+		}
+	}
+
 	logFile := filepath.Join(mgr.ServiceDir, cleanName, "log", "main", "current")
 	if _, err := os.Stat(logFile); err == nil {
 		fmt.Println("\nRecent logs:")
@@ -276,15 +290,32 @@ func handleStatus(mgr *runit.Manager, name string, follow bool) {
 }
 
 func handleIsActive(mgr *runit.Manager, name string) {
-	cleanName := strings.TrimSuffix(name, ".service")
-	cmd := exec.Command("sv", "status", cleanName)
-	output, _ := cmd.CombinedOutput()
-	if strings.HasPrefix(string(output), "run:") {
+	if handleIsActiveInternal(mgr, name) {
 		fmt.Println("active")
 		os.Exit(0)
 	}
+	
+	// Brute-force recovery: if it's inactive but enabled, try to start it
+	cleanName := strings.TrimSuffix(name, ".service")
+	enablePath := filepath.Join(mgr.EnableDir, cleanName)
+	if _, err := os.Lstat(enablePath); err == nil {
+		fmt.Println("inactive (trying to start...)")
+		exec.Command("sv", "start", cleanName).Run()
+		if handleIsActiveInternal(mgr, name) {
+			fmt.Println("active")
+			os.Exit(0)
+		}
+	}
+
 	fmt.Println("inactive")
 	os.Exit(3)
+}
+
+func handleIsActiveInternal(mgr *runit.Manager, name string) bool {
+	cleanName := strings.TrimSuffix(name, ".service")
+	cmd := exec.Command("sv", "status", cleanName)
+	output, _ := cmd.CombinedOutput()
+	return strings.HasPrefix(string(output), "run:")
 }
 
 func handleIsEnabled(mgr *runit.Manager, name string) {

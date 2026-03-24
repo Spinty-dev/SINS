@@ -3,7 +3,6 @@ package runit
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"shim-systemctl/pkg/cgroups"
 	"shim-systemctl/pkg/units"
@@ -174,22 +173,17 @@ func (m *Manager) DisableService(name string) error {
 	return os.Remove(enablePath)
 }
 
-// WaitForService waits for runit to pick up the service and enter 'run' state
+// WaitForService waits for runit to pick up the service (supervise directory creation)
 func (m *Manager) WaitForService(name string, timeout int) error {
 	supervisePath := filepath.Join(m.EnableDir, name, "supervise")
-	fmt.Printf("SINS: Waiting for %s to enter 'run' state... (target: %s)\n", name, supervisePath)
+	fmt.Printf("Waiting for runsv to initialize %s... (polling %s)\n", name, supervisePath)
 	
+	// Poll every 100ms for better responsiveness
 	for i := 0; i < timeout*10; i++ {
-		// First check for supervise directory
 		if _, err := os.Stat(supervisePath); err == nil {
-			// Then check status via sv
-			cmd := exec.Command("sv", "status", name)
-			output, _ := cmd.CombinedOutput()
-			if strings.HasPrefix(string(output), "run:") {
-				return nil
-			}
+			return nil
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return fmt.Errorf("timeout waiting for %s to become active", name)
+	return fmt.Errorf("timeout waiting for runsv to start for service %s", name)
 }
