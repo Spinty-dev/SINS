@@ -25,9 +25,19 @@ func getEnv(key, defaultValue string) string {
 }
 
 func NewManager() *Manager {
+	enableDir := getEnv("RUNIT_SERVICE_DIR", "")
+	if enableDir == "" {
+		// Detect Artix/Void style /run/runit/service
+		if _, err := os.Stat("/run/runit/service"); err == nil {
+			enableDir = "/run/runit/service"
+		} else {
+			enableDir = "/var/service"
+		}
+	}
+
 	return &Manager{
 		ServiceDir:    getEnv("RUNIT_SV_DIR", "/etc/runit/sv"),
-		EnableDir:     getEnv("RUNIT_SERVICE_DIR", "/var/service"),
+		EnableDir:     enableDir,
 		CgroupManager: cgroups.NewManager(),
 	}
 }
@@ -166,11 +176,14 @@ func (m *Manager) DisableService(name string) error {
 // WaitForService waits for runit to pick up the service (supervise directory creation)
 func (m *Manager) WaitForService(name string, timeout int) error {
 	supervisePath := filepath.Join(m.EnableDir, name, "supervise")
-	for i := 0; i < timeout*2; i++ {
+	fmt.Printf("Waiting for runsv to initialize %s... (polling %s)\n", name, supervisePath)
+	
+	// Poll every 100ms for better responsiveness
+	for i := 0; i < timeout*10; i++ {
 		if _, err := os.Stat(supervisePath); err == nil {
 			return nil
 		}
-		time.Sleep(500 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for runsv to start for service %s", name)
 }
