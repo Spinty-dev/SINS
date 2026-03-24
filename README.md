@@ -4,6 +4,10 @@
 
 ---
 
+[English](README.md) | [Русский](README.ru.md)
+
+---
+
 ## 🚀 Key Features
 
 - **Standard CLI**: Full `systemctl` command set (`start`, `stop`, `status`, `enable`, `disable`).
