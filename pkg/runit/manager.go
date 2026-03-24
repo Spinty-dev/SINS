@@ -7,6 +7,7 @@ import (
 	"shim-systemctl/pkg/cgroups"
 	"shim-systemctl/pkg/units"
 	"strings"
+	"time"
 )
 
 type Manager struct {
@@ -160,4 +161,16 @@ func (m *Manager) DisableService(name string) error {
 		return err
 	}
 	return os.Remove(enablePath)
+}
+
+// WaitForService waits for runit to pick up the service (supervise directory creation)
+func (m *Manager) WaitForService(name string, timeout int) error {
+	supervisePath := filepath.Join(m.EnableDir, name, "supervise")
+	for i := 0; i < timeout*2; i++ {
+		if _, err := os.Stat(supervisePath); err == nil {
+			return nil
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	return fmt.Errorf("timeout waiting for runsv to start for service %s", name)
 }
