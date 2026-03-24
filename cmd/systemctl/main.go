@@ -43,22 +43,42 @@ func main() {
 		os.Exit(1)
 	}
 
-	command := os.Args[1]
+	command := ""
+	unitName := ""
+	flags := make(map[string]bool)
+
+	// Robust argument parsing
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if strings.HasPrefix(arg, "-") {
+			// It's a flag
+			if arg == "-f" || arg == "--follow" {
+				flags["follow"] = true
+			} else if arg == "--now" {
+				flags["now"] = true
+			} else {
+				// Ignore other common flags for compatibility
+				// e.g., --user, --system, --no-block, --no-pager
+				flags[arg] = true
+			}
+		} else {
+			// It's a positional argument
+			if command == "" {
+				command = arg
+			} else if unitName == "" {
+				unitName = arg
+			}
+		}
+	}
+
+	if command == "" {
+		printUsage()
+		os.Exit(1)
+	}
 	
 	if command == "daemon-reload" {
 		fmt.Println("Daemon reload (noop in shim)")
 		return
-	}
-
-	unitName := ""
-	follow := false
-
-	for i := 2; i < len(os.Args); i++ {
-		if os.Args[i] == "-f" {
-			follow = true
-		} else if unitName == "" {
-			unitName = os.Args[i]
-		}
 	}
 
 	if unitName == "" && command != "daemon-reload" {
@@ -78,14 +98,20 @@ func main() {
 	case "reload":
 		handleReload(mgr, unitName)
 	case "status":
-		handleStatus(mgr, unitName, follow)
+		handleStatus(mgr, unitName, flags["follow"])
 	case "is-active":
 		handleIsActive(mgr, unitName)
 	case "is-enabled":
 		handleIsEnabled(mgr, unitName)
 	case "enable":
 		handleEnable(mgr, unitName)
+		if flags["now"] {
+			handleAction(mgr, unitName, "start", true)
+		}
 	case "disable":
+		if flags["now"] {
+			handleAction(mgr, unitName, "stop", false)
+		}
 		handleDisable(mgr, unitName)
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
