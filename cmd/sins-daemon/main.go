@@ -15,39 +15,58 @@ import (
 )
 
 func main() {
+	fmt.Println("SINS Daemon starting... (GNOME Edition v0.1-42)")
 	mgr := runit.NewManager()
 
 	// Initialize Notify Listener
 	nl, err := notify.NewListener(mgr.ServiceDir)
 	if err != nil {
-		log.Fatalf("Failed to start notify listener: %v", err)
+		fmt.Printf("Warning: Failed to start notify listener (likely no permissions): %v\n", err)
+	} else {
+		fmt.Println("Notify listener started at /run/systemd/notify")
+		go nl.Start()
 	}
-	fmt.Println("Notify listener started at /run/systemd/notify")
-	go nl.Start()
 
 	// Initialize D-Bus Bridge
-	conn, err := dbus_lib.SystemBus()
-	if err != nil {
-		// Fallback to SessionBus for development/testing
+	var conn *dbus_lib.Conn
+
+	if os.Getenv("SINS_SESSION") != "" {
+		fmt.Println("SINS_SESSION detected, connecting to Session Bus...")
 		conn, err = dbus_lib.SessionBus()
+	} else {
+		conn, err = dbus_lib.SystemBus()
 		if err != nil {
-			log.Fatalf("Failed to connect to D-Bus: %v", err)
+			fmt.Println("Warning: Could not connect to SystemBus, falling back to SessionBus")
+			conn, err = dbus_lib.SessionBus()
 		}
 	}
 
-	// Request org.freedesktop.systemd1 name
-	reply, err := conn.RequestName("org.freedesktop.systemd1", dbus_lib.NameFlagReplaceExisting)
 	if err != nil {
-		fmt.Printf("Warning: Could not request name org.freedesktop.systemd1: %v\n", err)
-	} else if reply != dbus_lib.RequestNameReplyPrimaryOwner {
-		fmt.Println("Warning: Name org.freedesktop.systemd1 already owned by another process")
+		log.Fatalf("Failed to connect to D-Bus: %v", err)
+	}
+
+	// Request names
+	names := []string{
+		"org.freedesktop.systemd1",
+		"org.freedesktop.hostname1",
+		"org.freedesktop.timedate1",
+		"org.freedesktop.locale1",
+	}
+
+	for _, name := range names {
+		reply, err := conn.RequestName(name, dbus_lib.NameFlagReplaceExisting)
+		if err != nil {
+			fmt.Printf("Warning: Could not request name %s: %v\n", name, err)
+		} else if reply != dbus_lib.RequestNameReplyPrimaryOwner {
+			fmt.Printf("Warning: Name %s already owned by another process (reply code: %v)\n", name, reply)
+		}
 	}
 
 	if err := dbus.Register(conn, mgr); err != nil {
 		log.Fatalf("Failed to register D-Bus Manager: %v", err)
 	}
 
-	fmt.Println("SINS Daemon is running (D-Bus, Notify, Cgroups integrated)")
+	fmt.Println("SINS Daemon is FULLY ACTIVE")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)

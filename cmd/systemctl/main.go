@@ -76,17 +76,35 @@ func main() {
 		os.Exit(1)
 	}
 	
+	mgr := runit.NewManager()
+
 	if command == "daemon-reload" {
-		fmt.Println("Daemon reload (noop in shim)")
+		fmt.Println("Reloading units and regenerating run scripts...")
+		files, err := os.ReadDir(mgr.ServiceDir)
+		if err != nil {
+			fmt.Printf("Error reading service directory: %v\n", err)
+			os.Exit(1)
+		}
+		for _, f := range files {
+			if f.IsDir() {
+				name := f.Name()
+				unitPath := findUnitFile(name)
+				if unitPath != "" {
+					unit, err := units.Parse(unitPath)
+					if err == nil {
+						fmt.Printf("Regenerating script for %s\n", name)
+						mgr.SetupService(name, unit)
+					}
+				}
+			}
+		}
 		return
 	}
 
-	if unitName == "" && command != "daemon-reload" {
+	if unitName == "" {
 		fmt.Printf("Unit name required for command %s\n", command)
 		os.Exit(1)
 	}
-
-	mgr := runit.NewManager()
 
 	switch command {
 	case "start":
@@ -188,6 +206,13 @@ func handleAction(mgr *runit.Manager, name string, svCmd string, autoCreate bool
 		ensureServiceExists(mgr, name)
 	}
 
+	// For runit, starting a service requires it to be enabled (linked)
+	if svCmd == "start" || svCmd == "restart" {
+		if err := mgr.EnableService(cleanName); err != nil {
+			fmt.Printf("Warning: failed to enable service %s: %v\n", cleanName, err)
+		}
+	}
+
 	if err := mgr.WaitForService(cleanName, 5); err != nil {
 		fmt.Printf("Warning: %v. Runit might still be initializing the service.\n", err)
 	}
@@ -241,30 +266,31 @@ func handleReload(mgr *runit.Manager, name string) {
 func handleStatus(mgr *runit.Manager, name string, follow bool) {
 	cleanName := strings.TrimSuffix(name, ".service")
 	svPath := filepath.Join(mgr.ServiceDir, cleanName)
+	unitPath := findUnitFile(name)
 	
+	if unitPath != "" {
+		fmt.Printf("● %s - Unit file found at %s\n", name, unitPath)
+	}
+
 	if _, err := os.Stat(svPath); os.IsNotExist(err) {
-		fmt.Printf("Unit %s could not be found.\n", name)
-		os.Exit(4)
+		if unitPath == "" {
+			fmt.Printf("Unit %s could not be found.\n", name)
+			os.Exit(4)
+		}
+		fmt.Println("   Status: Loaded (not started in runit)")
+		os.Exit(3)
 	}
 
 	cmd := exec.Command("sv", "status", cleanName)
 	output, _ := cmd.CombinedOutput()
-	fmt.Print(string(output))
+	fmt.Print("   Status: " + string(output))
 	isActive := strings.HasPrefix(string(output), "run:")
 
 	if !isActive {
 		// Try to recover if enabled
 		enablePath := filepath.Join(mgr.EnableDir, cleanName)
 		if _, err := os.Lstat(enablePath); err == nil {
-			exec.Command("sv", "start", cleanName).Run()
-			// Check again
-			cmd = exec.Command("sv", "status", cleanName)
-			output, _ = cmd.CombinedOutput()
-			isActive = strings.HasPrefix(string(output), "run:")
-			if isActive {
-				fmt.Println("Recovered status (started automatically):")
-				fmt.Print(string(output))
-			}
+			fmt.Println("   (Service is enabled but inactive, runit should start it soon)")
 		}
 	}
 

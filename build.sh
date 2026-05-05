@@ -67,6 +67,9 @@ if [[ "$tags" == *"timers"* ]]; then
     go build -tags "$tags" -o build/sins-timers ./cmd/timers/main.go
 fi
 
+echo "Building libsystemd stub..."
+gcc -shared -fPIC -Wl,--version-script=pkg/libsystemd/libsystemd.map -o build/libsystemd.so.0 pkg/libsystemd/stub.c -ldl
+
 echo "-----------------------------------------"
 echo "Success! Binaries are in build/"
 ls -lh build/
