@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"shim-systemctl/pkg/safeunit"
 	"shim-systemctl/pkg/units"
 	"strings"
 	"time"
@@ -75,7 +76,15 @@ func parseCalendar(val string) time.Duration {
 
 func (t *Timer) Trigger() {
 	fmt.Printf("[%v] Triggering timer %s -> %s\n", time.Now().Format(time.RFC3339), t.Name, t.Target)
-	
+
+	targetBase := strings.TrimSuffix(t.Target, ".service")
+	targetBase = strings.TrimSuffix(targetBase, ".socket")
+	targetBase = strings.TrimSuffix(targetBase, ".timer")
+	if err := safeunit.ValidateServiceName(targetBase); err != nil {
+		fmt.Printf("Error triggering %s: invalid target name: %v\n", t.Target, err)
+		return
+	}
+
 	systemctlPath := os.Getenv("SYSTEMCTL_PATH")
 	if systemctlPath == "" {
 		systemctlPath = "systemctl"

@@ -6,9 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"shim-systemctl/pkg/safeunit"
 	"shim-systemctl/pkg/units"
 	"strings"
 )
+
+func unixSocketModeFromEnv(key string, defaultOct uint32) os.FileMode {
+	s := strings.TrimSpace(os.Getenv(key))
+	if s == "" {
+		return os.FileMode(defaultOct)
+	}
+	var u uint32
+	if n, err := fmt.Sscanf(s, "%o", &u); n != 1 || err != nil || u > 07777 {
+		return os.FileMode(defaultOct)
+	}
+	return os.FileMode(u)
+}
 
 type Activator struct {
 	UnitPath    string
@@ -47,8 +60,8 @@ func (a *Activator) Run() error {
 	}
 	defer l.Close()
 
-	// Ensure the socket is world-writable (common for docker.sock)
-	os.Chmod(listenStream, 0666)
+	mode := unixSocketModeFromEnv("SINS_UNIX_SOCKET_MODE", 0666)
+	_ = os.Chmod(listenStream, mode)
 
 	fmt.Printf("Listening on %s\n", listenStream)
 
@@ -64,7 +77,13 @@ func (a *Activator) Run() error {
 		// Trigger the service
 		unitFile := filepath.Base(a.UnitPath)
 		serviceName := strings.TrimSuffix(unitFile, ".socket") + ".service"
-		
+		svcBase := strings.TrimSuffix(serviceName, ".service")
+		if err := safeunit.ValidateServiceName(svcBase); err != nil {
+			fmt.Printf("Invalid service name %q: %v\n", serviceName, err)
+			conn.Close()
+			continue
+		}
+
 		cmd := exec.Command(a.ServicePath, "start", serviceName)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr

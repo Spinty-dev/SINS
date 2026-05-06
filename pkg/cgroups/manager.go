@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"shim-systemctl/pkg/safeunit"
 )
 
 const baseDir = "/sys/fs/cgroup/sins"
@@ -16,6 +18,9 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) SetupServiceCgroup(name string, limits map[string]string) error {
+	if err := safeunit.ValidateServiceName(name); err != nil {
+		return err
+	}
 	serviceDir := filepath.Join(baseDir, name)
 	if err := os.MkdirAll(serviceDir, 0755); err != nil {
 		return fmt.Errorf("failed to create cgroup dir: %w", err)

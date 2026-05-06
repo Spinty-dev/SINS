@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: ./build.sh --verify
+
+  tags-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tags:
+          - ''
+          - 'dbus,notify,cgroups,timers,sockets'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: go build -tags '${{ matrix.tags }}' -o /dev/null ./...
+
+  build-profiles:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - name: Minimal profile (no daemon)
+        run: |
+          ./build.sh --profile minimal
+          test -f build/systemctl
+          test -f build/libsystemd.so.0
+          test ! -f build/sins-daemon
+      - name: Desktop profile
+        run: |
+          ./build.sh --profile de
+          test -f build/sins-daemon
+          test ! -f build/sins-sockets
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus-user-session
+      - run: SINS_CHOICE=0 ./build.sh
+      - run: chmod +x test/smoke.sh test/smoke_dbus.sh test/smoke_aur.sh && test/smoke.sh && test/smoke_aur.sh

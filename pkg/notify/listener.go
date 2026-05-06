@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"shim-systemctl/pkg/safeunit"
 	"strings"
 	"syscall"
 )
@@ -31,7 +32,7 @@ func NewListener(serviceDir string) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	os.Chmod(SocketPath, 0666)
+	_ = os.Chmod(SocketPath, unixSocketModeFromEnv("SINS_NOTIFY_SOCKET_MODE", 0666))
 
 	f, err := conn.File()
 	if err == nil {
@@ -74,9 +75,24 @@ func (l *Listener) Start() {
 	}
 }
 
+func unixSocketModeFromEnv(key string, defaultOct uint32) os.FileMode {
+	s := strings.TrimSpace(os.Getenv(key))
+	if s == "" {
+		return os.FileMode(defaultOct)
+	}
+	var u uint32
+	if n, err := fmt.Sscanf(s, "%o", &u); n != 1 || err != nil || u > 07777 {
+		return os.FileMode(defaultOct)
+	}
+	return os.FileMode(u)
+}
+
 func (l *Listener) handleReady(pid int) {
 	serviceName := l.identifyService(pid)
 	if serviceName == "" {
+		return
+	}
+	if err := safeunit.ValidateServiceName(serviceName); err != nil {
 		return
 	}
 

@@ -8,15 +8,81 @@
 
 ---
 
-## 🚀 Основные возможности
+## Что такое SINS
 
-- **Стандартный CLI**: Полный набор команд `systemctl` (`start`, `stop`, `status`, `enable`, `disable`).
-- **D-Bus Bridge**: Реализует интерфейс `org.freedesktop.systemd1`, чтобы внешние инструменты (например, `busctl` или установщики) видели ваши сервисы.
-- **Socket Activation**: Поддержка юнитов `.socket` и передача FD 3.
-- **Поддержка таймеров**: Нативное планирование юнитов `.timer` через выделенный демон.
-- **Протокол Notify**: Полная поддержка сервисов `Type=notify` через `/run/systemd/notify`.
-- **Интеграция с Cgroups v2**: Автоматическое ограничение ресурсов (`MemoryMax`, `CPUQuota`) через `/sys/fs/cgroup/sins/`.
-- **Модульная сборка**: Выбирайте нужные модули при компиляции с помощью Go Build Tags.
+Это **прослойка совместимости для runit**, а не замена systemd. Много софта заработает «как есть», но функции **настоящего systemd** (user@, portable-сервисы, полные пространства journal, cgroup API systemd и т.п.) могут не поддерживаться — см. таблицы.
+
+### Матрица совместимости
+
+**systemctl** (частичный паритет, упор на скрипты и установщики):
+
+| Команда / поведение | Уровень |
+|---------------------|---------|
+| start, stop, restart, reload, status, enable, disable | Поддерживается (`sv` и ссылки enable) |
+| daemon-reload, show, cat, list-units, list-unit-files, is-system-running | Поддерживается (упрощённые семантики) |
+| mask, unmask | Поддерживается (`/etc/sins/masked`) |
+| try-restart, reload-or-restart, try-reload-or-restart, kill | Поддерживается (best-effort) |
+| preset, preset-all | Явный no-op (нет базы preset) |
+| Несколько юнитов за раз; `--user`; `--quiet` | Частично |
+| Остальное | Вне плана без вклада сообщества |
+
+**Юнит → run-скрипт**
+
+| Фича | Уровень |
+|------|---------|
+| ExecStart, ExecStartPre (`sh -c` с экранированием) | Поддерживается |
+| Type=simple по умолчанию; notify (`NOTIFY_SOCKET`); forking (ожидание `PIDFile`, если задан) | Частично |
+| Environment, EnvironmentFile (строки KEY=value), WorkingDirectory | Частично (`pkg/runit/manager.go`) |
+| User через `chpst -u` | Частично |
+| Group, ambient caps, drop-in systemd, slices | Не планируется / игнор |
+
+**D-Bus** (тег `dbus`):
+
+| Область | Уровень |
+|---------|---------|
+| `org.freedesktop.systemd1` Manager и заглушки под introspect | Частично |
+| Установка hostname/timedate/locale | **Явные ошибки**, без «тихого успеха» |
+
+**libsystemd / journal**
+
+| Область | Уровень |
+|---------|---------|
+| Трамплины в elogind | По карте символов |
+| NULL после `dlsym` | **abort с сообщением** |
+| Файловый `sd_journal_*` | Поддерживается; wait/get_fd через **inotify** каталога лога, если возможно |
+
+### Сообщество и упаковка
+
+- **Artix + runit**: целевой сценарий; честная матрица важнее заявлений о полном systemd.
+- **Форум / wiki**: завести тему на [форуме Artix](https://forum.artixlinux.org/) или дополнить wiki — это помогает собирать списки «ломучих» пакетов.
+
+### Модули (go build tags)
+
+- **dbus**, **notify**, **timers**, **sockets**, **cgroups** — см. `build.sh`.
+
+### Чеклист десктопа (KDE / Hyprland + AUR)
+
+SINS закрывает слой **`systemctl` + `libsystemd` + шина systemd1**. Остальное — как на Artix без systemd:
+
+1. **Сборка**: для полноценного DE — `SINS_PROFILE=de` или `full`. **minimal** — без `sins-daemon`.
+2. **Сессия**: **elogind** + DM / Wayland.
+3. **Права**: **polkit** и группы (`storage`, `network`…).
+4. **Порталы**: **xdg-desktop-portal** + бэкенд (**-kde** / **-gtk** / **-wlr**).
+5. **Звук / BT**: **PipeWire** и т.д. — отдельно от SINS.
+6. **Диски**: **udisks2** + **udiskie**.
+7. **Pacman**: `IgnorePkg = systemd` и т.д.
+
+**`systemctl --user`**: чтение unit’ов из пользовательских путей для `status`/`show`/`cat`; **start/enable** с `--user` не поддерживаются — см. stderr.
+
+AUR: [contrib/desktop/AUR-checklist.md](contrib/desktop/AUR-checklist.md), смоук: `test/smoke_aur.sh` после `build.sh --profile minimal`.
+
+### Заметки по безопасности
+
+- Имена сервисов для `sv` и путей **валидируются** (`pkg/safeunit`): без `/`, `..` и опасных символов.
+- В генерируемых run-скриптах **экранируются** рабочий каталог, `PIDFile`, каталог `chpst -e`; **ExecReload** выполняется через то же quoting, что и `ExecStart`.
+- Ключи **Environment** должны быть безопасными идентификаторами, чтобы не выйти за пределы каталога `env/` сервиса.
+- **Политика system D-Bus** (`org.freedesktop.systemd1.conf`): у не-root ограничены вызовы `Manager` (без **StartUnit/StopUnit/RestartUnit** на system bus); при особых сценариях правьте конфиг локально.
+- Права unix-сокетов по умолчанию **0666** (как у типичного `docker.sock`). Ужесточение: **`SINS_UNIX_SOCKET_MODE`** и **`SINS_NOTIFY_SOCKET_MODE`** (восьмеричная строка, например `0660`).
 
 ---
 
@@ -34,31 +100,84 @@ SINS разработан для дистрибутивов **Linux**, испо�
 
 ### Зависимости
 - **Go** (рекомендуется 1.25+)
-- **Runit**
-- **D-Bus** (для модуля D-Bus bridge)
+- **GCC** и GNU `ld` — для сборки шима `libsystemd.so.0` (только Linux **x86_64**). **Systemd и libsystemd для сборки не нужны**; реальные символы подтягиваются в рантайме через elogind.
+- **Runit** и **D-Bus** — зависимости на целевой системе, а не на чистой машине для компиляции.
 
-### 1. Интерактивная сборка
-Запустите скрипт сборки, чтобы выбрать нужные модули:
+На архитектурах, отличных от x86_64, `build.sh` соберёт Go-бинарники, но пропустит сборку `.so`.
+
+### Обновление экспортируемого ABI
+Правьте `pkg/libsystemd/libsystemd.map`, затем пересоберите список `JUMP_TO`:
+
+```bash
+python3 scripts/sync_stub_jumps.py
+```
+
+Либо `SINS_SYNC_STUB=1 ./build.sh` перед сборкой шима (нужен Python 3).
+
+### Пользовательский журнал (sd_journal)
+Реализованы **`sd_journal_*`** поверх одного append-only файла (без journald). Запись и чтение — обычным API libsystemd; путь к файлу:
+
+- `$SINS_JOURNAL_FILE`, иначе
+- `/var/log/sins-journal/journal.sins` (если доступен на запись), иначе
+- `/tmp/sins-journal/journal.sins`
+
+Просмотр для отладки:
+
+```bash
+python3 scripts/sins-journal-cat.py
+python3 scripts/sins-journal-cat.py /путь/к/journal.sins
+```
+
+В пакете ставится `/etc/logrotate.d/sins-journal` (из `contrib/logrotate/sins-journal`). Скрипт `sins.install` создаёт `/var/log/sins-journal` и при наличии группы `adm` выставляет права для чтения лога администраторами.
+
+### 1. Профили (Artix / Void — только нужное)
+
+```bash
+./build.sh --list-profiles
+./build.sh --profile minimal     # только systemctl + libsystemd.so
+./build.sh --profile de          # dbus + notify (типичный DE)
+./build.sh --profile server      # dbus + timers + cgroups
+./build.sh --full
+
+SINS_TAGS=dbus ./build.sh
+./build.sh --tags dbus,notify
+SINS_STRIP=1 ./build.sh --profile minimal
+./build.sh --print-tags --profile de
+```
+
+В неинтерактивном режиме по умолчанию — **`minimal`**, пока не заданы `SINS_PROFILE`, `SINS_TAGS` или `SINS_CHOICE`.
+
+Void: [contrib/void/README.md](contrib/void/README.md).
+
+### 2. Интерактивная сборка
+
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
-Следуйте подсказкам меню (например, введите `0` для всего или `1,5` для D-Bus + Cgroups).
 
-### 2. Ручная/Автоматическая сборка
-Используйте переменную окружения `SINS_CHOICE`:
+Буквы профиля (`m`/`d`/`e`/`s`/`f`) или старый числовой `SINS_CHOICE`.
+
+### 3. Legacy / CI
+
 ```bash
-# Собрать все модули
 SINS_CHOICE=0 ./build.sh
+./build.sh --verify
 ```
 
-### 3. Установка (Arch/Artix)
-Для дистрибутивов с поддержкой AUR используйте предоставленный `PKGBUILD`:
+В CI: verify, матрица тегов, профили minimal/de, `test/smoke.sh`, `test/smoke_aur.sh`.
+
+### 4. Установка (Arch/Artix)
+
+По умолчанию в `PKGBUILD` — **`SINS_PROFILE=full`**. Минимальный пакет:
+
 ```bash
-makepkg -si
+SINS_PROFILE=minimal makepkg -si
 ```
 
-### 4. Управление пакетами (Arch Linux)
+Для стека DE без socket-активации: `SINS_PROFILE=de makepkg -si`.
+
+### 5. Управление пакетами (Arch Linux)
 Чтобы обновления `systemd` не перезаписывали прослойку SINS, рекомендуется добавить `systemd` в `IgnorePkg` в вашем `/etc/pacman.conf`:
 ```ini
 [options]
@@ -85,16 +204,6 @@ echo -e "#!/bin/sh\nexec sins-daemon" > /etc/runit/sv/sins-daemon/run
 chmod +x /etc/runit/sv/sins-daemon/run
 ln -s /etc/runit/sv/sins-daemon /var/service/
 ```
-
----
-
-## 🧩 Система модульности
-SINS использует **Go Build Tags**, чтобы сохранять бинарные файлы компактными.
-- `dbus`: Включает bridge для D-Bus.
-- `notify`: Включает поддержку сокета Notify.
-- `timers`: Включает логику демона таймеров.
-- `sockets`: Включает поддержку активации сокетов.
-- `cgroups`: Включает логику ограничений Cgroups v2.
 
 ---
 

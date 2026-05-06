@@ -7,101 +7,26 @@
 #include <dlfcn.h>
 #include <unistd.h>
 #include <stdarg.h>
-#include <time.h>
-#include <sys/uio.h>
+
+#if !defined(__x86_64__) || !defined(__linux__)
+#error "SINS libsystemd shim: Linux x86-64 only (JUMP_TO uses AMD64 SysV ABI)."
+#endif
 
 static void* real_lib = NULL;
 __attribute__((constructor)) static void init_lib() { real_lib = dlopen("libelogind.so.0", RTLD_LAZY); }
 
 static void* get_fn(const char* name) { if (!real_lib) init_lib(); return dlsym(real_lib, name); }
 
-static void sins_journal_log(const char* msg) {
-    FILE* f = fopen("/tmp/sins-journal.log", "a");
-    if (!f) return;
-    time_t now = time(NULL);
-    char* ts = ctime(&now);
-    if (ts) ts[strlen(ts)-1] = 0;
-    fprintf(f, "[%s] %s\n", ts ? ts : "?", msg);
-    fclose(f);
+__attribute__((noreturn)) void sins_jumpto_missing(const char *sym) {
+    const char *err = dlerror();
+    fprintf(stderr, "SINS: missing symbol \"%s\" in libelogind.so.0", sym);
+    if (err && err[0])
+        fprintf(stderr, " (%s)", err);
+    fprintf(stderr, "\nUpgrade/downgrade elogind or refresh pkg/libsystemd/libsystemd.map to match your distro ABI.\n");
+    abort();
 }
 
-int sd_journal_print(int priority, const char *format, ...) {
-    char buf[1024]; va_list aq; va_start(aq, format); vsnprintf(buf, sizeof(buf), format, aq); va_end(aq);
-    sins_journal_log(buf); return 0;
-}
-int sd_journal_print_with_location(int priority, const char *file, const char *line, const char *func, const char *format, ...) {
-    char buf[1024]; va_list aq; va_start(aq, format); vsnprintf(buf, sizeof(buf), format, aq); va_end(aq);
-    sins_journal_log(buf); return 0;
-}
-int sd_journal_send(const char *format, ...) {
-    sins_journal_log(format); return 0;
-}
-int sd_journal_sendv(const struct iovec *iov, int n) {
-    for(int i=0; i<n; i++) { if (iov[i].iov_base) sins_journal_log((char*)iov[i].iov_base); }
-    return 0;
-}
-int sd_journal_sendv_with_location(const struct iovec *iov, int n, const char *file, const char *line, const char *func) {
-    return sd_journal_sendv(iov, n);
-}
-int sd_journal_add_conjunction(void* j, ...) { return 0; }
-int sd_journal_add_disjunction(void* j, ...) { return 0; }
-int sd_journal_add_match(void* j, ...) { return 0; }
-int sd_journal_close(void* j, ...) { return 0; }
-int sd_journal_enumerate_available_data(void* j, ...) { return 0; }
-int sd_journal_enumerate_available_unique(void* j, ...) { return 0; }
-int sd_journal_enumerate_data(void* j, ...) { return 0; }
-int sd_journal_enumerate_fields(void* j, ...) { return 0; }
-int sd_journal_enumerate_unique(void* j, ...) { return 0; }
-int sd_journal_flush_matches(void* j, ...) { return 0; }
-int sd_journal_get_catalog(void* j, ...) { return 0; }
-int sd_journal_get_catalog_for_message_id(void* j, ...) { return 0; }
-int sd_journal_get_cursor(void* j, ...) { return 0; }
-int sd_journal_get_cutoff_monotonic_usec(void* j, ...) { return 0; }
-int sd_journal_get_cutoff_realtime_usec(void* j, ...) { return 0; }
-int sd_journal_get_data(void* j, ...) { return 0; }
-int sd_journal_get_data_threshold(void* j, ...) { return 0; }
-int sd_journal_get_events(void* j, ...) { return 0; }
-int sd_journal_get_fd(void* j, ...) { return 0; }
-int sd_journal_get_monotonic_usec(void* j, ...) { return 0; }
-int sd_journal_get_realtime_usec(void* j, ...) { return 0; }
-int sd_journal_get_seqnum(void* j, ...) { return 0; }
-int sd_journal_get_timeout(void* j, ...) { return 0; }
-int sd_journal_get_usage(void* j, ...) { return 0; }
-int sd_journal_has_persistent_files(void* j, ...) { return 0; }
-int sd_journal_has_runtime_files(void* j, ...) { return 0; }
-int sd_journal_next(void* j, ...) { return 0; }
-int sd_journal_next_skip(void* j, ...) { return 0; }
-int sd_journal_open(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_container(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_directory(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_directory_fd(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_files(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_files_fd(void** j, ...) { return -ENOSYS; }
-int sd_journal_open_namespace(void** j, ...) { return -ENOSYS; }
-int sd_journal_perror(const char* arg, ...) { sins_journal_log(arg); return 0; }
-int sd_journal_perror_with_location(const char* arg, ...) { sins_journal_log(arg); return 0; }
-int sd_journal_previous(void* j, ...) { return 0; }
-int sd_journal_previous_skip(void* j, ...) { return 0; }
-int sd_journal_printv(const char* arg, ...) { sins_journal_log(arg); return 0; }
-int sd_journal_printv_with_location(const char* arg, ...) { sins_journal_log(arg); return 0; }
-int sd_journal_process(void* j, ...) { return 0; }
-int sd_journal_query_unique(void* j, ...) { return 0; }
-int sd_journal_reliable_fd(void* j, ...) { return 0; }
-int sd_journal_restart_data(void* j, ...) { return 0; }
-int sd_journal_restart_fields(void* j, ...) { return 0; }
-int sd_journal_restart_unique(void* j, ...) { return 0; }
-int sd_journal_seek_cursor(void* j, ...) { return 0; }
-int sd_journal_seek_head(void* j, ...) { return 0; }
-int sd_journal_seek_monotonic_usec(void* j, ...) { return 0; }
-int sd_journal_seek_realtime_usec(void* j, ...) { return 0; }
-int sd_journal_seek_tail(void* j, ...) { return 0; }
-int sd_journal_send_with_location(const char* arg, ...) { sins_journal_log(arg); return 0; }
-int sd_journal_set_data_threshold(void* j, ...) { return 0; }
-int sd_journal_step_one(void* j, ...) { return 0; }
-int sd_journal_stream_fd(void* j, ...) { return 0; }
-int sd_journal_stream_fd_with_namespace(void* j, ...) { return 0; }
-int sd_journal_test_cursor(void* j, ...) { return 0; }
-int sd_journal_wait(void* j, ...) { return 0; }
+/* sd_journal_* live in journal.c */
 
 int sd_bus_call_method(void* bus, const char* dest, const char* path, const char* iface, const char* method, void* error, void** reply, const char* types, ...) {
     if (method && (strcmp(method, "GetSession") == 0 || strcmp(method, "GetSeat") == 0)) {
@@ -109,6 +34,8 @@ int sd_bus_call_method(void* bus, const char* dest, const char* path, const char
         int (*new_call)(void*, void**, const char*, const char*, const char*, const char*) = get_fn("sd_bus_message_new_method_call");
         int (*append)(void*, char, const void*) = get_fn("sd_bus_message_append_basic");
         int (*call)(void*, void*, uint64_t, void*, void**) = get_fn("sd_bus_call");
+        if (!new_call || !append || !call)
+            return -ENOSYS;
         new_call(bus, &m, dest, path, iface, method);
         const char* arg = strcmp(method, "GetSession") == 0 ? "self" : "seat0";
         append(m, 's', &arg);
@@ -116,12 +43,16 @@ int sd_bus_call_method(void* bus, const char* dest, const char* path, const char
     }
     va_list aq; va_start(aq, types);
     int (*real_v)(void*, const char*, const char*, const char*, const char*, void*, void**, const char*, va_list) = get_fn("sd_bus_call_methodv");
+    if (!real_v) {
+        va_end(aq);
+        return -ENOSYS;
+    }
     int r = real_v(bus, dest, path, iface, method, error, reply, types, aq);
     va_end(aq); return r;
 }
 
 #define JUMP_TO(name) \
-    static void* ptr_##name = NULL; \
+    static void* ptr_##name __attribute__((unused)) = NULL; \
     __attribute__((naked)) void name() { \
         __asm__( \
             "movq ptr_" #name "(%rip), %rax\n\t" \
@@ -142,6 +73,8 @@ int sd_bus_call_method(void* bus, const char* dest, const char* path, const char
             "movq real_lib(%rip), %rdi\n\t" \
             "leaq .Lfn_name_" #name "(%rip), %rsi\n\t" \
             "call dlsym@PLT\n\t" \
+            "testq %rax, %rax\n\t" \
+            "jz .Ljm_miss_" #name "\n\t" \
             "movq %rax, ptr_" #name "(%rip)\n\t" \
             "movaps 16(%rsp), %xmm1\n\t" \
             "movaps 0(%rsp), %xmm0\n\t" \
@@ -157,6 +90,9 @@ int sd_bus_call_method(void* bus, const char* dest, const char* path, const char
             "popq %rax\n\t" \
             "movq ptr_" #name "(%rip), %rax\n\t" \
             "1: jmp *%rax\n\t" \
+            ".Ljm_miss_" #name ":\n\t" \
+            "leaq .Lfn_name_" #name "(%rip), %rdi\n\t" \
+            "call sins_jumpto_missing@PLT\n\t" \
             ".section .rodata\n\t" \
             ".Lfn_name_" #name ": .string \"" #name "\"\n\t" \
             ".previous" \
@@ -168,6 +104,7 @@ int sd_session_is_active(const char *session) { return 1; }
 int sd_session_get_seat(const char *session, char **ret) { if (ret) *ret = strdup("seat0"); return 0; }
 int sd_booted(void) { return 1; }
 
+/* --- BEGIN GENERATED JUMP_TO (libsystemd.map) --- */
 JUMP_TO(sd_bus_add_fallback)
 JUMP_TO(sd_bus_add_fallback_vtable)
 JUMP_TO(sd_bus_add_filter)
@@ -971,3 +908,4 @@ JUMP_TO(sd_varlink_take_fd)
 JUMP_TO(sd_varlink_unref)
 JUMP_TO(sd_varlink_wait)
 JUMP_TO(sd_watchdog_enabled)
+/* --- END GENERATED JUMP_TO --- */

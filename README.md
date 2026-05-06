@@ -8,15 +8,87 @@
 
 ---
 
-## 🚀 Key Features
+## What SINS is (and is not)
 
-- **Standard CLI**: Full `systemctl` command set (`start`, `stop`, `status`, `enable`, `disable`).
-- **D-Bus Bridge**: Implements `org.freedesktop.systemd1` so external tools (like `busctl` or installers) see your services.
-- **Socket Activation**: Support for `.socket` units and FD 3 passing.
-- **Timer Support**: Native `.timer` unit scheduling via a dedicated daemon.
-- **Notify Protocol**: Full support for `Type=notify` services via `/run/systemd/notify`.
-- **Cgroups v2 Integration**: Automated resource limiting (`MemoryMax`, `CPUQuota`) via `/sys/fs/cgroup/sins/`.
-- **Modular Build**: Choose exactly which modules to compile using Go Build Tags.
+SINS is a **compatibility shim for runit-based systems**, not systemd. Many applications work unchanged; anything that requires real **systemd features** (user@ services, portable images, full journal namespaces, cgroup APIs from systemd, and similar) may still fail — see the matrices below.
+
+### Compatibility matrix
+
+**systemctl** (partial parity — aimed at installer/script callers):
+
+| Command / behavior | Level |
+|--------------------|--------|
+| start, stop, restart, reload, status, enable, disable | Supported (maps to `sv` / symlink layout) |
+| daemon-reload, show, cat, list-units, list-unit-files, is-system-running | Supported (simplified semantics vs systemd) |
+| mask, unmask | Supported (markers under `/etc/sins/masked`; blocks enable/start) |
+| try-restart, reload-or-restart, try-reload-or-restart, kill | Supported (best-effort `sv` / `ExecReload`) |
+| preset, preset-all | No-op with documented exit success (no preset database) |
+| Multiple units per invocation; `--user` unit paths; `--quiet` | Partial |
+| Everything else | Not planned unless someone contributes it |
+
+**Unit files → run scripts**
+
+| Feature | Level |
+|---------|--------|
+| ExecStart, ExecStartPre (shell-quoted `sh -c`) | Supported |
+| Type=simple default, notify (sets `NOTIFY_SOCKET`), forking (waits on `PIDFile` if set) | Partial |
+| Environment, EnvironmentFile (KEY=value lines), WorkingDirectory | Partial (see `pkg/runit/manager.go`) |
+| User via `chpst -u` | Partial |
+| Group, ambient capabilities, systemd drop-ins, slices | Not planned / ignored |
+
+**D-Bus** (with `dbus` build tag):
+
+| Area | Level |
+|------|--------|
+| `org.freedesktop.systemd1` Manager basics, introspection-oriented stubs | Partial |
+| Setters on hostname/timedate/locale | **Fail with explicit errors** (no silent success) |
+
+**libsystemd / journal**
+
+| Area | Level |
+|------|--------|
+| Trampoline to elogind for most symbols | Supported where mapped |
+| Missing symbol after `dlsym` | **Controlled abort + message** (no jump to NULL) |
+| `sd_journal_*` file backend | Supported; wait/fd use **inotify** on the log directory when available |
+
+### Community & packaging
+
+- **Artix / runit**: SINS targets this workflow; tracking gaps publicly beats claiming full systemd parity.
+- **Forum / wiki**: Open a thread on [Artix forums](https://forum.artixlinux.org/) or document quirks on the wiki so others can find supported-package lists — contributions welcome.
+
+### Modules (optional build tags)
+
+- **dbus**: D-Bus bridge for systemd-compatible names.
+- **notify**: Notify socket support (`/run/systemd/notify`).
+- **timers**: `.timer` scheduling daemon.
+- **sockets**: `.socket`-style activation helper.
+- **cgroups**: Best-effort cgroup limits under `/sys/fs/cgroup/sins/`.
+
+### Desktop user checklist (KDE / Hyprland + AUR — “don’t think, just use repos”)
+
+SINS covers the **`systemctl` + `libsystemd.so` + `org.freedesktop.systemd1`** slice. The rest of a comfortable desktop is **not** this repo — but this order keeps surprises low:
+
+1. **Build/install**: `SINS_PROFILE=de` or `full` (see `build.sh --list-profiles`). Minimal (`systemctl` + shim only) is for headless experiments, not full Plasma.
+2. **Session / seat**: **elogind** (and your display manager or wayland session) — required for KDE/Wayland login the same as on Artix without systemd.
+3. **Policy / permissions**: **polkit** + your user in the right groups (`network`, `storage`, etc. per wiki) so GUI tools stop asking for impossible things.
+4. **Portals & apps**: **xdg-desktop-portal** + at least one backend (**xdg-desktop-portal-kde**, **-gtk**, or **-wlr** for Hyprland) so Flatpak/Discord/file dialogs behave.
+5. **Audio / devices**: **PipeWire** (or PulseAudio) and **BlueZ** as you would on Arch; not shimmed by SINS.
+6. **Disks / automount**: **udisks2** + **udiskie** (or your automounter); they talk to the session and udev, not to PID1.
+7. **Pacman**: keep **`IgnorePkg = systemd`** (and friends) as in the “Package management” section so updates do not replace the shim.
+
+**`systemctl --user`**: SINS can **read** unit files under `~/.config/systemd/user` for `status` / `show` / `cat`. It does **not** create a private runit tree for `--user start|enable` — use **system** units or link services yourself (a banner explains this when you pass `--user`).
+
+AUR / `PKGBUILD` quirks (link tests, postinst): see [contrib/desktop/AUR-checklist.md](contrib/desktop/AUR-checklist.md). Quick smoke: `test/smoke_aur.sh` after `./build.sh --profile minimal`.
+
+### Security notes (defense in depth)
+
+SINS does **not** replace a full system hardening program, but the code aims to reduce common footguns:
+
+- **Service names** passed to `sv` and used for paths are validated (no `/`, `..`, or shell metacharacters) — see `pkg/safeunit`.
+- **Generated run scripts** quote `WorkingDirectory`, `PIDFile`, `chpst -e` paths, and `ExecReload` uses the same single-quote escaping as `ExecStart` to avoid command injection from unit files.
+- **Environment keys** from `Environment=` / `EnvironmentFile` must look like safe identifiers so they cannot write outside the per-service `env/` directory.
+- **System D-Bus policy** (`org.freedesktop.systemd1.conf`): non-root callers can introspect and call read-oriented `Manager` methods; **StartUnit / StopUnit / RestartUnit** are denied on the system bus (root policy unchanged). Adjust locally if you rely on non-root activation via the bus.
+- **Unix activation / notify sockets** default to mode `0666` for Docker-style compatibility. Tighten with **`SINS_UNIX_SOCKET_MODE`** (e.g. `0660`) and **`SINS_NOTIFY_SOCKET_MODE`** (octal strings).
 
 ---
 
@@ -34,31 +106,88 @@ SINS is designed for **Linux** distributions running **runit** as the init syste
 
 ### Dependencies
 - **Go** (1.25+ recommended)
-- **Runit**
-- **D-Bus** (for the D-Bus bridge module)
+- **GCC** and GNU `ld` — to build the `libsystemd.so.0` shim (Linux **x86_64** only). **You do not need systemd or libsystemd installed** to compile; the real symbols are resolved at runtime via elogind.
+- **Runit** and **D-Bus** — runtime dependencies on target systems, not required on a pure build host.
 
-### 1. Interactive Build
-Run the build script to select which modules you want to include:
+On non-x86_64 hosts, `build.sh` still produces the Go binaries but skips the shared library.
+
+### Maintainer: updating the exported ABI
+Edit `pkg/libsystemd/libsystemd.map`, then regenerate trampolines:
+
+```bash
+python3 scripts/sync_stub_jumps.py
+```
+
+Or `SINS_SYNC_STUB=1 ./build.sh` before compiling the stub (requires Python 3).
+
+### Userspace journal (sd_journal)
+SINS implements **`sd_journal_*`** on top of a single append-only binary file (not systemd-journald). Writers and readers use the normal libsystemd API; data is stored under:
+
+- `$SINS_JOURNAL_FILE` if set, else
+- `/var/log/sins-journal/journal.sins` (if writable), else
+- `/tmp/sins-journal/journal.sins`
+
+To dump the log for debugging:
+
+```bash
+python3 scripts/sins-journal-cat.py
+python3 scripts/sins-journal-cat.py /path/to/journal.sins
+```
+
+The package installs `/etc/logrotate.d/sins-journal` (from `contrib/logrotate/sins-journal`). On fresh setups, ensure `/var/log/sins-journal` exists and is writable for writers that cannot fall back to `/tmp` (the `sins.install` script adjusts ownership when the `adm` group exists).
+
+### 1. Profiles (recommended for Artix / Void minimalism)
+
+```bash
+./build.sh --list-profiles          # table: minimal, dbus, de, server, full
+./build.sh --profile minimal        # systemctl + libsystemd.so only (smallest)
+./build.sh --profile de             # dbus + notify (typical Plasma/GNOME stack)
+./build.sh --profile server         # dbus + timers + cgroups (no socket activator)
+./build.sh --full                   # everything (former “choice 0”)
+
+# Exact Go tags (overrides profile):
+SINS_TAGS=dbus ./build.sh
+./build.sh --tags dbus,notify
+
+# Smaller binaries:
+SINS_STRIP=1 ./build.sh --profile minimal
+
+# Scripts / templates: print resolved tag list
+./build.sh --print-tags --profile de   # → dbus,notify
+```
+
+Non-interactive default is **`minimal`** (no D-Bus daemon) unless you set `SINS_PROFILE`, `SINS_TAGS`, or legacy `SINS_CHOICE`.
+
+Void: see [contrib/void/README.md](contrib/void/README.md).
+
+### 2. Interactive build
+
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
-Follow the menu prompts (e.g., enter `0` for everything or `1,5` for D-Bus + Cgroups).
 
-### 2. Manual/Non-Interactive Build
-Use the `SINS_CHOICE` environment variable:
+Prompts for a **letter profile** (`m`/`d`/`e`/`s`/`f`) or legacy numeric `SINS_CHOICE` (`0` = full, `1,4` = dbus+notify, etc.).
+
+### 3. Legacy / CI
+
 ```bash
-# Build everything
-SINS_CHOICE=0 ./build.sh
+SINS_CHOICE=0 ./build.sh            # full stack (same as --full)
+./build.sh --verify                 # compile check: all tags + no tags + stub
 ```
 
-### 3. Installation (Arch/Artix)
-For AUR-compatible distributions, use the provided `PKGBUILD`:
+Continuous integration runs `./build.sh --verify`, a **Go build tag matrix**, `build-profiles` (minimal/de), `test/smoke.sh` (journal `.so`, mocked `systemctl`, optional session D-Bus), and `test/smoke_aur.sh`.
+
+### 4. Installation (Arch/Artix)
+For AUR-compatible distributions, use the provided `PKGBUILD` (default **`SINS_PROFILE=full`**). Minimal package from the same `PKGBUILD`:
+
 ```bash
-makepkg -si
+SINS_PROFILE=minimal makepkg -si
 ```
 
-### 4. Package Management (Arch Linux)
+For a desktop-oriented build without socket activation: `SINS_PROFILE=de makepkg -si`.
+
+### 5. Package Management (Arch Linux)
 To prevent `systemd` updates from overwriting the SINS shim, it is recommended to add `systemd` to `IgnorePkg` in your `/etc/pacman.conf`:
 ```ini
 [options]
@@ -85,16 +214,6 @@ echo -e "#!/bin/sh\nexec sins-daemon" > /etc/runit/sv/sins-daemon/run
 chmod +x /etc/runit/sv/sins-daemon/run
 ln -s /etc/runit/sv/sins-daemon /var/service/
 ```
-
----
-
-## 🧩 Modularity System
-SINS uses **Go Build Tags** to keep binaries slim.
-- `dbus`: Includes D-Bus bridge.
-- `notify`: Includes Notify socket support.
-- `timers`: Includes timer daemon logic.
-- `sockets`: Includes socket activator support.
-- `cgroups`: Includes Cgroups v2 limit logic.
 
 ---
 

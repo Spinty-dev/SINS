@@ -7,18 +7,27 @@ post_install() {
   echo ">>> [options]"
   echo ">>> IgnorePkg = systemd"
   echo ">>> "
-  
-  # Auto-enable sins-daemon
-  if [ -d /run/runit/service ]; then
-      SV_DIR="/run/runit/service"
+
+  install -d /var/log/sins-journal /etc/sins/masked
+  if getent group adm >/dev/null 2>&1; then
+    chown root:adm /var/log/sins-journal 2>/dev/null || true
+    chmod 2775 /var/log/sins-journal 2>/dev/null || chmod 755 /var/log/sins-journal
   else
-      SV_DIR="/var/service"
+    chmod 755 /var/log/sins-journal 2>/dev/null || true
   fi
   
-  if [ ! -L "$SV_DIR/sins-daemon" ]; then
-      echo ">>> Enabling sins-daemon in $SV_DIR..."
-      ln -s /etc/runit/sv/sins-daemon "$SV_DIR/sins-daemon"
-      echo ">>> SINS daemon enabled and starting."
+  # Auto-enable sins-daemon only if this profile shipped the binary + runit template
+  if [ -x /usr/bin/sins-daemon ] && [ -f /etc/runit/sv/sins-daemon/run ]; then
+    if [ -d /run/runit/service ]; then
+        SV_DIR="/run/runit/service"
+    else
+        SV_DIR="/var/service"
+    fi
+    if [ ! -L "$SV_DIR/sins-daemon" ]; then
+        echo ">>> Enabling sins-daemon in $SV_DIR..."
+        ln -s /etc/runit/sv/sins-daemon "$SV_DIR/sins-daemon"
+        echo ">>> SINS daemon enabled and starting."
+    fi
   fi
 }
 
