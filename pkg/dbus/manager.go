@@ -130,30 +130,44 @@ func (m *SinsManager) ListUnits() ([]UnitInfo, *dbus.Error) {
 }
 
 func (m *SinsManager) StartUnit(name string, mode string) (dbus.ObjectPath, *dbus.Error) {
+	_ = mode
 	cleanName := strings.TrimSuffix(name, ".service")
 	if err := safeunit.ValidateServiceName(cleanName); err != nil {
 		return "/", dbus.MakeFailedError(err)
 	}
-	m.runitMgr.EnableService(cleanName)
-	exec.Command("sv", "start", cleanName).Run()
+	if err := m.runitMgr.EnableService(cleanName); err != nil {
+		return "/", dbus.MakeFailedError(fmt.Errorf("StartUnit enable failed for %s: %w", cleanName, err))
+	}
+	cmd := exec.Command("sv", "start", cleanName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "/", dbus.MakeFailedError(fmt.Errorf("StartUnit sv start failed for %s: %v (%s)", cleanName, err, strings.TrimSpace(string(out))))
+	}
 	return "/", nil
 }
 
 func (m *SinsManager) StopUnit(name string, mode string) (dbus.ObjectPath, *dbus.Error) {
+	_ = mode
 	cleanName := strings.TrimSuffix(name, ".service")
 	if err := safeunit.ValidateServiceName(cleanName); err != nil {
 		return "/", dbus.MakeFailedError(err)
 	}
-	exec.Command("sv", "stop", cleanName).Run()
+	cmd := exec.Command("sv", "stop", cleanName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "/", dbus.MakeFailedError(fmt.Errorf("StopUnit sv stop failed for %s: %v (%s)", cleanName, err, strings.TrimSpace(string(out))))
+	}
 	return "/", nil
 }
 
 func (m *SinsManager) RestartUnit(name string, mode string) (dbus.ObjectPath, *dbus.Error) {
+	_ = mode
 	cleanName := strings.TrimSuffix(name, ".service")
 	if err := safeunit.ValidateServiceName(cleanName); err != nil {
 		return "/", dbus.MakeFailedError(err)
 	}
-	exec.Command("sv", "restart", cleanName).Run()
+	cmd := exec.Command("sv", "restart", cleanName)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return "/", dbus.MakeFailedError(fmt.Errorf("RestartUnit sv restart failed for %s: %v (%s)", cleanName, err, strings.TrimSpace(string(out))))
+	}
 	return "/", nil
 }
 

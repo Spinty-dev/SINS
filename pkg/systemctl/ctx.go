@@ -56,10 +56,19 @@ func (c *Ctx) FindUnitFile(name string) string {
 	if !ext {
 		name += ".service"
 	}
+	tryNames := []string{name}
+	// Template units: foo@bar.service may be provided by foo@.service.
+	if strings.Contains(name, "@") && strings.HasSuffix(name, ".service") {
+		if parts := strings.SplitN(strings.TrimSuffix(name, ".service"), "@", 2); len(parts) == 2 && parts[0] != "" && parts[1] != "" {
+			tryNames = append(tryNames, parts[0]+"@.service")
+		}
+	}
 	for _, p := range c.UnitPaths {
-		path := filepath.Join(p, name)
-		if _, err := os.Stat(path); err == nil {
-			return path
+		for _, n := range tryNames {
+			path := filepath.Join(p, n)
+			if _, err := os.Stat(path); err == nil {
+				return path
+			}
 		}
 	}
 	return ""

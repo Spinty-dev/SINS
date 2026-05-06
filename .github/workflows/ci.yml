@@ -29,6 +29,16 @@ jobs:
           go-version: '1.25.x'
       - run: go build -tags '${{ matrix.tags }}' -o /dev/null ./...
 
+  tests:
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: go test ./...
+
   build-profiles:
     runs-on: ubuntu-latest
     needs: verify
@@ -59,4 +69,14 @@ jobs:
           go-version: '1.25.x'
       - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends dbus-user-session
       - run: SINS_CHOICE=0 ./build.sh
-      - run: chmod +x test/smoke.sh test/smoke_dbus.sh test/smoke_aur.sh && test/smoke.sh && test/smoke_aur.sh
+      - run: |
+          chmod +x test/smoke.sh test/smoke_dbus.sh test/smoke_aur.sh \
+            test/smoke_template_units.sh test/smoke_oneshot_forking.sh \
+            test/smoke_reload.sh test/smoke_user_mode.sh test/smoke_dbus_unit_props.sh
+          test/smoke.sh
+          test/smoke_aur.sh
+          test/smoke_template_units.sh
+          test/smoke_oneshot_forking.sh
+          test/smoke_reload.sh
+          test/smoke_user_mode.sh
+          test/smoke_dbus_unit_props.sh

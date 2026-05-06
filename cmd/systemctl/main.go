@@ -137,6 +137,14 @@ func runGlobal(command string, ctx *systemctl.Ctx, mgr *runit.Manager) {
 			if unitPath != "" {
 				unit, err := units.Parse(unitPath)
 				if err == nil {
+					// Template instances: service dir "foo@bar" is backed by unit "foo@.service".
+					// Ensure placeholders are replaced so regenerated scripts match the instance.
+					if strings.Contains(name, "@") && strings.HasSuffix(unitPath, "@.service") {
+						parts := strings.SplitN(name, "@", 2)
+						if len(parts) == 2 && parts[1] != "" {
+							unit.ReplacePlaceholders(parts[1])
+						}
+					}
 					ctx.Logf("Regenerating script for %s\n", name)
 					_ = mgr.SetupService(name, unit)
 				}
@@ -411,7 +419,9 @@ func reloadSvc(ctx *systemctl.Ctx, mgr *runit.Manager, name string) error {
 			execReload := unit.GetServiceField("ExecReload")
 			if execReload != "" {
 				fmt.Printf("Executing ExecReload: %s\n", execReload)
-				reloadCmd := exec.Command("sh", "-c", units.ShellEscapeSingleQuoted(execReload))
+				// ExecReload in systemd is a command line; in SINS we delegate to sh -c.
+				// Do NOT wrap execReload in extra quotes here: sh -c expects a script.
+				reloadCmd := exec.Command("sh", "-c", execReload)
 				reloadCmd.Stdout = os.Stdout
 				reloadCmd.Stderr = os.Stderr
 				if err := reloadCmd.Run(); err != nil {

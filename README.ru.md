@@ -32,6 +32,7 @@
 |------|---------|
 | ExecStart, ExecStartPre (`sh -c` с экранированием) | Поддерживается |
 | Type=simple по умолчанию; notify (`NOTIFY_SOCKET`); forking (ожидание `PIDFile`, если задан) | Частично |
+| Type=oneshot | Частично: старт и логи есть, но точной семантики состояний systemd oneshot нет |
 | Environment, EnvironmentFile (строки KEY=value), WorkingDirectory | Частично (`pkg/runit/manager.go`) |
 | User через `chpst -u` | Частично |
 | Group, ambient caps, drop-in systemd, slices | Не планируется / игнор |
@@ -75,6 +76,20 @@ SINS закрывает слой **`systemctl` + `libsystemd` + шина systemd
 **`systemctl --user`**: чтение unit’ов из пользовательских путей для `status`/`show`/`cat`; **start/enable** с `--user` не поддерживаются — см. stderr.
 
 AUR: [contrib/desktop/AUR-checklist.md](contrib/desktop/AUR-checklist.md), смоук: `test/smoke_aur.sh` после `build.sh --profile minimal`.
+
+### CLI test matrix (база перед релизом)
+
+Релизный минимум по CLI закреплён smoke-набором в `test/`:
+
+- `test/smoke.sh` — journal shim, базовый поток `systemctl`, опциональный D-Bus smoke.
+- `test/smoke_aur.sh` — linker/`pkg-config` sanity для AUR.
+- `test/smoke_template_units.sh` — `@`-шаблоны и регенерация через `daemon-reload`.
+- `test/smoke_oneshot_forking.sh` — проверки генерации run-скриптов для `Type=oneshot` и `Type=forking`.
+- `test/smoke_reload.sh` — путь выполнения `ExecReload`.
+- `test/smoke_user_mode.sh` — read-only поведение `--user` и блокировка мутаций.
+- `test/smoke_dbus_unit_props.sh` — свойства `org.freedesktop.systemd1.Unit` и ошибки Manager-методов.
+
+Go/no-go перед тегом: [contrib/desktop/release-checklist.md](contrib/desktop/release-checklist.md).
 
 ### Заметки по безопасности
 
@@ -165,7 +180,7 @@ SINS_CHOICE=0 ./build.sh
 ./build.sh --verify
 ```
 
-В CI: verify, матрица тегов, профили minimal/de, `test/smoke.sh`, `test/smoke_aur.sh`.
+В CI: verify, `go test ./...`, матрица тегов, профили minimal/de и полный smoke-набор `test/smoke*.sh`.
 
 ### 4. Установка (Arch/Artix)
 

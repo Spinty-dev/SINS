@@ -32,6 +32,7 @@ SINS is a **compatibility shim for runit-based systems**, not systemd. Many appl
 |---------|--------|
 | ExecStart, ExecStartPre (shell-quoted `sh -c`) | Supported |
 | Type=simple default, notify (sets `NOTIFY_SOCKET`), forking (waits on `PIDFile` if set) | Partial |
+| Type=oneshot | Partial: starts and logs, but runit does not replicate exact systemd oneshot state transitions |
 | Environment, EnvironmentFile (KEY=value lines), WorkingDirectory | Partial (see `pkg/runit/manager.go`) |
 | User via `chpst -u` | Partial |
 | Group, ambient capabilities, systemd drop-ins, slices | Not planned / ignored |
@@ -79,6 +80,20 @@ SINS covers the **`systemctl` + `libsystemd.so` + `org.freedesktop.systemd1`** s
 **`systemctl --user`**: SINS can **read** unit files under `~/.config/systemd/user` for `status` / `show` / `cat`. It does **not** create a private runit tree for `--user start|enable` — use **system** units or link services yourself (a banner explains this when you pass `--user`).
 
 AUR / `PKGBUILD` quirks (link tests, postinst): see [contrib/desktop/AUR-checklist.md](contrib/desktop/AUR-checklist.md). Quick smoke: `test/smoke_aur.sh` after `./build.sh --profile minimal`.
+
+### CLI test matrix (release baseline)
+
+The release gate for CLI compatibility is the smoke suite in `test/`:
+
+- `test/smoke.sh` — journal shim, basic `systemctl` flow, optional D-Bus session smoke.
+- `test/smoke_aur.sh` — linker/`pkg-config` sanity for AUR-style builds.
+- `test/smoke_template_units.sh` — `@` template resolution and `daemon-reload` regeneration.
+- `test/smoke_oneshot_forking.sh` — script generation assertions for `Type=oneshot` and `Type=forking`.
+- `test/smoke_reload.sh` — `ExecReload` execution path.
+- `test/smoke_user_mode.sh` — `--user` read-only behavior and mutation guardrails.
+- `test/smoke_dbus_unit_props.sh` — `org.freedesktop.systemd1.Unit` properties (including boolean fields) and Manager error paths.
+
+See [contrib/desktop/release-checklist.md](contrib/desktop/release-checklist.md) for go/no-go before tagging.
 
 ### Security notes (defense in depth)
 
@@ -176,7 +191,7 @@ SINS_CHOICE=0 ./build.sh            # full stack (same as --full)
 ./build.sh --verify                 # compile check: all tags + no tags + stub
 ```
 
-Continuous integration runs `./build.sh --verify`, a **Go build tag matrix**, `build-profiles` (minimal/de), `test/smoke.sh` (journal `.so`, mocked `systemctl`, optional session D-Bus), and `test/smoke_aur.sh`.
+Continuous integration runs `./build.sh --verify`, `go test ./...`, a **Go build tag matrix**, `build-profiles` (minimal/de), and the full smoke suite (`test/smoke*.sh`).
 
 ### 4. Installation (Arch/Artix)
 For AUR-compatible distributions, use the provided `PKGBUILD` (default **`SINS_PROFILE=full`**). Minimal package from the same `PKGBUILD`:
