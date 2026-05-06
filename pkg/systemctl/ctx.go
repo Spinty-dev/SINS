@@ -10,21 +10,30 @@ import (
 	"shim-systemctl/pkg/runit"
 )
 
-const MaskedDir = "/etc/sins/masked"
+const SystemMaskedDir = "/etc/sins/masked"
 
 type Ctx struct {
 	Mgr       *runit.Manager
 	UnitPaths []string
 	Quiet     bool
 	UserMode  bool
+	maskedDir string
 }
 
 func NewCtx(mgr *runit.Manager, userMode, quiet bool) *Ctx {
+	maskedDir := SystemMaskedDir
+	if userMode {
+		home := os.Getenv("HOME")
+		if home != "" {
+			maskedDir = filepath.Join(home, ".config", "sins", "masked")
+		}
+	}
 	return &Ctx{
 		Mgr:       mgr,
 		UnitPaths: ResolveUnitPaths(userMode),
 		Quiet:     quiet,
 		UserMode:  userMode,
+		maskedDir: maskedDir,
 	}
 }
 
@@ -83,7 +92,7 @@ func normalizeMaskedBase(unit string) string {
 }
 
 func (c *Ctx) MaskedPath(unit string) string {
-	return filepath.Join(MaskedDir, normalizeMaskedBase(unit))
+	return filepath.Join(c.maskedDir, normalizeMaskedBase(unit))
 }
 
 func (c *Ctx) IsMasked(unit string) bool {
@@ -92,7 +101,7 @@ func (c *Ctx) IsMasked(unit string) bool {
 }
 
 func (c *Ctx) Mask(unit string) error {
-	if err := os.MkdirAll(MaskedDir, 0755); err != nil {
+	if err := os.MkdirAll(c.maskedDir, 0755); err != nil {
 		return err
 	}
 	p := c.MaskedPath(unit)

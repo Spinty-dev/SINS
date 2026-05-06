@@ -9,6 +9,7 @@ import (
 	"shim-systemctl/pkg/runit"
 	"shim-systemctl/pkg/safeunit"
 	"shim-systemctl/pkg/systemctl"
+	"shim-systemctl/pkg/targets"
 	"shim-systemctl/pkg/units"
 	"strings"
 )
@@ -74,10 +75,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	mgr := runit.NewManager()
+	var mgr *runit.Manager
+	if userMode {
+		um := runit.NewUserManager()
+		mgr = um.Manager
+	} else {
+		mgr = runit.NewManager()
+	}
 	ctx := systemctl.NewCtx(mgr, userMode, quiet)
 
-	if userMode && !quiet {
+	if userMode && !quiet && os.Getenv("SINS_QUIET_USER_BANNER") == "" {
 		fmt.Fprintln(os.Stderr, systemctl.UserModeBanner())
 	}
 
@@ -173,12 +180,13 @@ func runGlobal(command string, ctx *systemctl.Ctx, mgr *runit.Manager) {
 }
 
 func runUnitCommand(ctx *systemctl.Ctx, mgr *runit.Manager, command, unitName string, flagNow, follow bool) int {
+	// Handle target units (.target)
+	if targets.IsTarget(unitName) {
+		return runTargetCommand(ctx, command, unitName)
+	}
+
 	if err := validateRunitServiceRef(unitName); err != nil {
 		fmt.Fprintf(os.Stderr, "Invalid unit name %q: %v\n", unitName, err)
-		return 1
-	}
-	if ctx.UserMode && systemctl.UserModeBlocksMutation(command) {
-		systemctl.PrintUserMutationError(command)
 		return 1
 	}
 	switch command {
@@ -307,6 +315,58 @@ func runUnitCommand(ctx *systemctl.Ctx, mgr *runit.Manager, command, unitName st
 		return 1
 	}
 	return 0
+}
+
+func runTargetCommand(ctx *systemctl.Ctx, command, targetName string) int {
+	tr := targets.NewTargetResolver(ctx.UnitPaths)
+
+	switch command {
+	case "start", "isolate":
+		// Find systemctl binary
+		scPath := os.Getenv("SYSTEMCTL_PATH")
+		if scPath == "" {
+			scPath = "systemctl"
+		}
+		if err := tr.StartTarget(targetName, scPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Target %s failed: %v\n", targetName, err)
+			return 1
+		}
+		return 0
+	case "status", "show":
+		services, err := tr.TargetUnits(targetName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		fmt.Printf("Target: %s\n", targetName)
+		fmt.Printf("Wants %d service(s):\n", len(services))
+		for _, s := range services {
+			fmt.Printf("  - %s\n", s)
+		}
+		return 0
+	case "stop":
+		// Stop all services in target
+		services, err := tr.TargetUnits(targetName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			return 1
+		}
+		exit := 0
+		for _, svc := range services {
+			svcBase := strings.TrimSuffix(svc, ".service")
+			svcBase = strings.TrimSuffix(svcBase, ".socket")
+			svcBase = strings.TrimSuffix(svcBase, ".timer")
+			cmd := exec.Command("sv", "stop", svcBase)
+			if err := cmd.Run(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to stop %s: %v\n", svc, err)
+				exit = 1
+			}
+		}
+		return exit
+	default:
+		fmt.Fprintf(os.Stderr, "Command %s not supported for target units\n", command)
+		return 1
+	}
 }
 
 func printUsage() {

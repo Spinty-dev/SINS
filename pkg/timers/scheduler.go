@@ -32,8 +32,8 @@ func NewTimer(path string) (*Timer, error) {
 	}
 
 	t := &Timer{
-		Unit: unit,
-		Name: name,
+		Unit:   unit,
+		Name:   name,
 		Target: target,
 	}
 	t.UpdateNextRun()
@@ -41,37 +41,53 @@ func NewTimer(path string) (*Timer, error) {
 }
 
 func (t *Timer) UpdateNextRun() {
+	now := time.Now()
 	calendar := t.Unit.Get("Timer", "OnCalendar")
+
 	if calendar != "" {
-		t.Interval = parseCalendar(calendar)
+		// Use new calendar parser for complex specs
+		next, err := ParseCalendar(calendar, now)
+		if err != nil {
+			// Fallback: treat as simple duration
+			t.Interval = parseSimpleDuration(calendar)
+			t.NextRun = now.Add(t.Interval)
+		} else {
+			t.NextRun = next
+			// Calculate interval for logging
+			t.Interval = t.NextRun.Sub(now)
+		}
 	} else {
 		activeSec := t.Unit.Get("Timer", "OnUnitActiveSec")
 		if activeSec != "" {
 			t.Interval, _ = time.ParseDuration(strings.ReplaceAll(activeSec, " ", ""))
 		}
+		if t.Interval == 0 {
+			t.Interval = 1 * time.Hour
+		}
+		t.NextRun = now.Add(t.Interval)
 	}
 
-	if t.Interval == 0 {
-		t.Interval = 1 * time.Hour
-	}
-	t.NextRun = time.Now().Add(t.Interval)
 	fmt.Printf("Timer %s scheduled for %v\n", t.Name, t.NextRun)
 }
 
-func parseCalendar(val string) time.Duration {
-	switch val {
+func parseSimpleDuration(val string) time.Duration {
+	switch strings.ToLower(val) {
 	case "minutely":
 		return 1 * time.Minute
 	case "hourly":
 		return 1 * time.Hour
 	case "daily":
 		return 24 * time.Hour
+	case "weekly":
+		return 7 * 24 * time.Hour
+	case "monthly":
+		return 30 * 24 * time.Hour // Approximate
 	}
 	d, err := time.ParseDuration(val)
 	if err == nil {
 		return d
 	}
-	return 0
+	return 1 * time.Hour // Default
 }
 
 func (t *Timer) Trigger() {

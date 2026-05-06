@@ -60,6 +60,9 @@ package() {
   if [[ -f build/sins-sockets ]]; then
     install -Dm755 build/sins-sockets "$pkgdir/usr/bin/sins-sockets"
   fi
+  if [[ -f build/sins-journalctl ]]; then
+    install -Dm755 build/sins-journalctl "$pkgdir/usr/bin/sins-journalctl"
+  fi
 
   install -d "$pkgdir/var/log/sins-journal"
   install -d "$pkgdir/etc/sins/masked"

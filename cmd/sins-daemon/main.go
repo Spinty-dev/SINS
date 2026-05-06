@@ -66,6 +66,19 @@ func main() {
 		log.Fatalf("Failed to register D-Bus Manager: %v", err)
 	}
 
+	// Initialize D-Bus service activation (for apps using dbus-1/services/)
+	activationHandler := dbus.NewActivationHandler(os.Getenv("SYSTEMCTL_PATH"))
+	if err := activationHandler.LoadServiceFiles(); err != nil {
+		fmt.Printf("Warning: Failed to load D-Bus service files: %v\n", err)
+	} else {
+		services := activationHandler.ListServices()
+		if len(services) > 0 {
+			fmt.Printf("D-Bus activation: monitoring %d service(s)\n", len(services))
+		}
+		// Watch for NameOwnerChanged to detect when services need activation
+		go dbus.WatchForActivation(conn, activationHandler)
+	}
+
 	fmt.Println("SINS Daemon is FULLY ACTIVE")
 
 	sigChan := make(chan os.Signal, 1)

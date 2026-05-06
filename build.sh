@@ -23,6 +23,61 @@ can_build_stub() {
 	[[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]
 }
 
+install_service() {
+	echo "Installing sins-daemon as runit service..."
+	
+	if [[ "$EUID" -ne 0 ]]; then
+		echo "Error: --install requires root (use sudo)" >&2
+		exit 1
+	fi
+	
+	# Detect service directory
+	local sv_dir="/etc/runit/sv"
+	local service_dir="/var/service"
+	
+	if [[ -d "/etc/runit/sv" ]]; then
+		sv_dir="/etc/runit/sv"
+	elif [[ -d "/etc/sv" ]]; then
+		sv_dir="/etc/sv"
+	fi
+	
+	if [[ -d "/run/runit/service" ]]; then
+		service_dir="/run/runit/service"
+	elif [[ -d "/var/service" ]]; then
+		service_dir="/var/service"
+	fi
+	
+	# Create service directory
+	mkdir -p "$sv_dir/sins-daemon"
+	
+	# Create run script
+	cat > "$sv_dir/sins-daemon/run" <<'RUNEOF'
+#!/bin/sh
+exec 2>&1
+exec sins-daemon
+RUNEOF
+	chmod +x "$sv_dir/sins-daemon/run"
+	
+	# Create finish script for cleanup
+	cat > "$sv_dir/sins-daemon/finish" <<'FINEOF'
+#!/bin/sh
+# sins-daemon cleanup
+FINEOF
+	chmod +x "$sv_dir/sins-daemon/finish"
+	
+	# Enable service
+	if [[ -d "$service_dir" ]]; then
+		ln -sf "$sv_dir/sins-daemon" "$service_dir/" 2>/dev/null || \
+			echo "Warning: could not enable service (may already exist)"
+	fi
+	
+	echo "sins-daemon installed to $sv_dir/sins-daemon/"
+	echo "Service ${enabled:+enabled}${enabled:+ at $service_dir/sins-daemon}"
+	echo ""
+	echo "To start now: sv start sins-daemon"
+	echo "To check status: sv status sins-daemon"
+}
+
 build_stub() {
 	echo "Building libsystemd stub (Linux x86_64)..."
 	gcc -shared -fPIC \
@@ -42,6 +97,7 @@ Usage: $0 [options]
   --verify            Compile check (full tags + no tags + stub when x86_64 Linux)
   --list-profiles     Show named profiles (minimal, dbus, de, server, full)
   --print-tags        Print resolved comma-separated tags and exit (for scripts)
+  --install           Install sins-daemon as runit service (requires root)
   --minimal           Same as --profile minimal
   --full, --all       Same as --profile full
   --profile NAME      minimal | dbus | de | server | full
@@ -175,6 +231,11 @@ while [[ $# -gt 0 ]]; do
 		CLI_TAGS="${2:?}"
 		shift 2
 		;;
+	--install)
+		shift
+		install_service
+		exit 0
+		;;
 	*)
 		echo "Unknown option: $1 (try --help)" >&2
 		exit 2
@@ -282,6 +343,9 @@ else
 	rm -f build/sins-timers
 	echo "Skipping sins-timers (no 'timers' tag)."
 fi
+
+echo "Building sins-journalctl..."
+go build -o build/sins-journalctl ./cmd/journalctl
 
 if can_build_stub; then
 	build_stub

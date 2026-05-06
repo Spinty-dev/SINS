@@ -26,8 +26,17 @@ post_install() {
     if [ ! -L "$SV_DIR/sins-daemon" ]; then
         echo ">>> Enabling sins-daemon in $SV_DIR..."
         ln -s /etc/runit/sv/sins-daemon "$SV_DIR/sins-daemon"
-        echo ">>> SINS daemon enabled and starting."
+        echo ">>> Starting sins-daemon..."
+        # Give runit a moment to pick it up, then start
+        sleep 0.5
+        sv start sins-daemon 2>/dev/null || true
+        echo ">>> SINS daemon enabled and started."
+        echo ">>> Check status: sv status sins-daemon"
     fi
+    
+    echo ">>> "
+    echo ">>> Desktop users: export SINS_SESSION=1 in ~/.bash_profile for user services"
+    echo ">>> (pipewire, ssh-agent, etc. via systemctl --user)"
   fi
 }
 

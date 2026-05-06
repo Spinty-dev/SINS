@@ -6,13 +6,12 @@ import (
 	"strings"
 )
 
-// UserModeBanner is printed once when --user is used (stderr) so AUR/desktop users know limits.
+// UserModeBanner is printed once when --user is used (stderr) so AUR/desktop users know the setup.
 func UserModeBanner() string {
 	var b strings.Builder
-	b.WriteString("SINS (--user): user unit files are read from ~/.config/systemd/user and ~/.local/share/systemd/user (and SYSTEMD_UNIT_PATH).\n")
-	b.WriteString("Runit services managed by SINS are system-wide under RUNIT_SV_DIR (default /etc/runit/sv). ")
-	b.WriteString("`systemctl --user start|enable|mask` cannot install a private runit tree — use system units or symlink services yourself.\n")
-	b.WriteString("Commands that only read unit files (status, show, cat, list-unit-files) work with --user.\n")
+	b.WriteString("SINS (--user): user services are enabled under ~/.runit/service\n")
+	b.WriteString("Unit files: ~/.config/systemd/user, ~/.local/share/systemd/user\n")
+	b.WriteString("Tip: Ensure runsvdir is monitoring ~/.runit/service for user services to run.\n")
 	return b.String()
 }
 

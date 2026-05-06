@@ -20,10 +20,11 @@ SINS is a **compatibility shim for runit-based systems**, not systemd. Many appl
 |--------------------|--------|
 | start, stop, restart, reload, status, enable, disable | Supported (maps to `sv` / symlink layout) |
 | daemon-reload, show, cat, list-units, list-unit-files, is-system-running | Supported (simplified semantics vs systemd) |
-| mask, unmask | Supported (markers under `/etc/sins/masked`; blocks enable/start) |
+| mask, unmask | Supported (system: `/etc/sins/masked`, user: `~/.config/sins/masked`) |
 | try-restart, reload-or-restart, try-reload-or-restart, kill | Supported (best-effort `sv` / `ExecReload`) |
 | preset, preset-all | No-op with documented exit success (no preset database) |
-| Multiple units per invocation; `--user` unit paths; `--quiet` | Partial |
+| `--user` start/stop/enable/disable | **Supported** — private runit tree under `~/.runit/` |
+| Targets (graphical.target, multi-user.target) | Supported — `start`, `stop`, `isolate` commands |
 | Everything else | Not planned unless someone contributes it |
 
 **Unit files → run scripts**
@@ -42,6 +43,8 @@ SINS is a **compatibility shim for runit-based systems**, not systemd. Many appl
 | Area | Level |
 |------|--------|
 | `org.freedesktop.systemd1` Manager basics, introspection-oriented stubs | Partial |
+| D-Bus service activation | Supported — auto-starts services from `/usr/share/dbus-1/services/` |
+| Socket activation (`ListenStream`) | Supported — passes `LISTEN_FDS` to services |
 | Setters on hostname/timedate/locale | **Fail with explicit errors** (no silent success) |
 
 **libsystemd / journal**
@@ -51,6 +54,7 @@ SINS is a **compatibility shim for runit-based systems**, not systemd. Many appl
 | Trampoline to elogind for most symbols | Supported where mapped |
 | Missing symbol after `dlsym` | **Controlled abort + message** (no jump to NULL) |
 | `sd_journal_*` file backend | Supported; wait/fd use **inotify** on the log directory when available |
+| sins-journalctl | **New** — read logs in journalctl format |
 
 ### Community & packaging
 
@@ -59,11 +63,12 @@ SINS is a **compatibility shim for runit-based systems**, not systemd. Many appl
 
 ### Modules (optional build tags)
 
-- **dbus**: D-Bus bridge for systemd-compatible names.
+- **dbus**: D-Bus bridge for systemd-compatible names + service activation.
 - **notify**: Notify socket support (`/run/systemd/notify`).
-- **timers**: `.timer` scheduling daemon.
-- **sockets**: `.socket`-style activation helper.
+- **timers**: `.timer` scheduling daemon with full calendar spec support (`Mon *-*-01`, etc.).
+- **sockets**: `.socket`-style activation helper with `LISTEN_FDS` passing.
 - **cgroups**: Best-effort cgroup limits under `/sys/fs/cgroup/sins/`.
+- **targets**: Target unit support (`graphical.target`, `default.target`).
 
 ### Desktop user checklist (KDE / Hyprland + AUR — “don’t think, just use repos”)
 
@@ -77,7 +82,7 @@ SINS covers the **`systemctl` + `libsystemd.so` + `org.freedesktop.systemd1`** s
 6. **Disks / automount**: **udisks2** + **udiskie** (or your automounter); they talk to the session and udev, not to PID1.
 7. **Pacman**: keep **`IgnorePkg = systemd`** (and friends) as in the “Package management” section so updates do not replace the shim.
 
-**`systemctl --user`**: SINS can **read** unit files under `~/.config/systemd/user` for `status` / `show` / `cat`. It does **not** create a private runit tree for `--user start|enable` — use **system** units or link services yourself (a banner explains this when you pass `--user`).
+**`systemctl --user`**: Full support — user services run under separate runit tree (`~/.runit/sv` → `~/.runit/service`). Masking, enable/disable, start/stop all work. sins-daemon автоматически запускает runsvdir для user сервисов при `SINS_SESSION=1`.
 
 AUR / `PKGBUILD` quirks (link tests, postinst): see [contrib/desktop/AUR-checklist.md](contrib/desktop/AUR-checklist.md). Quick smoke: `test/smoke_aur.sh` after `./build.sh --profile minimal`.
 
@@ -114,6 +119,30 @@ SINS is designed for **Linux** distributions running **runit** as the init syste
 - **Void Linux**
 - **Arch Linux** (with custom runit setup)
 - **Devuan** (runit flavor)
+
+---
+
+## � Quick Start (Artix runit)
+
+```bash
+# 1. Build (from regular user, no root needed for build)
+./build.sh --profile full
+
+# 2. Install binaries (as root)
+sudo cp build/systemctl build/sins-daemon build/sins-journalctl /usr/bin/
+sudo cp build/libsystemd.so.0 /usr/lib/
+
+# 3. Install sins-daemon as runit service (as root)
+sudo ./build.sh --install
+
+# 4. Start daemon
+sudo sv start sins-daemon
+
+# 5. For user services (pipewire, etc.), add to ~/.bash_profile:
+export SINS_SESSION=1
+```
+
+**That's it.** Now `systemctl start nginx`, `systemctl --user start pipewire`, etc. work.
 
 ---
 
