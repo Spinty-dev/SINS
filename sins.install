@@ -136,6 +136,27 @@ EOF
     fi
   fi
 
+  # 2b) Artix repos: ensure they use the Artix mirrorlist include.
+  # On Artix the default is usually Include = /etc/pacman.d/mirrorlist
+  # under [system]/[world]/[galaxy]. We keep existing custom includes.
+  if grep -Eq '^\[(system|world|galaxy)\]\s*$' "$pacman_conf"; then
+    for _r in system world galaxy; do
+      if grep -Eq "^\\[${_r}\\]\\s*$" "$pacman_conf"; then
+        # If the section includes the generic mirrorlist, swap it to mirrorlist-artix.
+        # Only touches the Include line inside that section.
+        awk -v repo="$_r" '
+          BEGIN{in=0}
+          $0 ~ ("^\\[" repo "\\]$") {in=1; print; next}
+          in==1 && $0 ~ /^\\[/ {in=0; print; next}
+          in==1 && $0 ~ /^\\s*Include\\s*=\\s*\\/etc\\/pacman\\.d\\/mirrorlist\\s*$/ {
+            print "Include = /etc/pacman.d/mirrorlist-artix"; next
+          }
+          {print}
+        ' "$pacman_conf" > "${pacman_conf}.sins.tmp" && mv "${pacman_conf}.sins.tmp" "$pacman_conf"
+      fi
+    done
+  fi
+
   # 3) Add Arch repos (core/extra/multilib) if missing
   if ! grep -Eq '^\[core\]\s*$' "$pacman_conf"; then
     cat >>"$pacman_conf" <<'EOF'
