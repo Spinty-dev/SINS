@@ -43,6 +43,9 @@ post_install() {
 
   # ---- pacman bootstrap (best-effort) ----
   pacman_bootstrap || true
+
+  # ---- lib64 compatibility (best-effort) ----
+  ensure_lib64_compat || true
 }
 
 post_upgrade() {
@@ -221,4 +224,21 @@ EOF
   fi
 
   echo ">>> pacman bootstrap done."
+}
+
+ensure_lib64_compat() {
+  # If /usr/lib64 is a real dir (not a symlink), some binaries will look there.
+  # If it's a symlink to /usr/lib (common), we must NOT create/own it as a package file.
+  [ -e /usr/lib/libsystemd.so.0 ] || return 0
+
+  if [ -d /usr/lib64 ] && [ ! -L /usr/lib64 ]; then
+    echo ">>> Ensuring /usr/lib64 libsystemd compatibility symlinks..."
+    ln -sf ../lib/libsystemd.so.0 /usr/lib64/libsystemd.so.0 2>/dev/null || true
+    ln -sf libsystemd.so.0 /usr/lib64/libsystemd.so 2>/dev/null || true
+
+    if [ -f /usr/lib/pkgconfig/libsystemd.pc ]; then
+      install -d /usr/lib64/pkgconfig 2>/dev/null || true
+      sed 's|^libdir=.*$|libdir=${prefix}/lib64|' /usr/lib/pkgconfig/libsystemd.pc > /usr/lib64/pkgconfig/libsystemd.pc 2>/dev/null || true
+    fi
+  fi
 }

@@ -9,7 +9,7 @@
 #
 pkgname=sins-git
 pkgver=0.1
-pkgrel=5
+pkgrel=6
 pkgdesc="SINS Is Not Systemd - modular systemd-to-runit shim (build: minimal/de/server/full via SINS_PROFILE)"
 arch=('x86_64')
 url="https://github.com/Spinty-dev/SINS"
@@ -51,12 +51,6 @@ package() {
   install -Dm755 build/libsystemd.so.0 "$pkgdir/usr/lib/libsystemd.so.0"
   ln -s libsystemd.so.0 "$pkgdir/usr/lib/libsystemd.so"
 
-  # Some distros use /usr/lib64 as the default runtime search path.
-  # Ship the same SONAME in lib64 too to avoid "cannot open shared object file".
-  install -d "$pkgdir/usr/lib64"
-  ln -sf ../lib/libsystemd.so.0 "$pkgdir/usr/lib64/libsystemd.so.0"
-  ln -sf libsystemd.so.0 "$pkgdir/usr/lib64/libsystemd.so"
-
   if [[ -f build/sins-daemon ]]; then
     install -Dm755 build/sins-daemon "$pkgdir/usr/bin/sins-daemon"
     install -Dm644 org.freedesktop.systemd1.conf "$pkgdir/usr/share/dbus-1/system.d/org.freedesktop.systemd1.conf"
@@ -78,8 +72,6 @@ package() {
   # pkg-config for libsystemd compatibility
   install -Dm644 contrib/pkgconfig/libsystemd.pc "$pkgdir/usr/lib/pkgconfig/libsystemd.pc"
   install -Dm644 contrib/pkgconfig/libsystemd.pc "$pkgdir/usr/share/pkgconfig/libsystemd.pc"
-  install -d "$pkgdir/usr/lib64/pkgconfig"
-  sed 's|^libdir=.*$|libdir=${prefix}/lib64|' contrib/pkgconfig/libsystemd.pc > "$pkgdir/usr/lib64/pkgconfig/libsystemd.pc"
 
   install -d "$pkgdir/var/log/sins-journal"
   install -d "$pkgdir/etc/sins/masked"
