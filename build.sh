@@ -83,6 +83,7 @@ build_stub() {
 	gcc -shared -fPIC \
 		-Wall -Wextra -Wno-unused-parameter \
 		-pthread \
+		-Wl,-soname,libsystemd.so.0 \
 		-Wl,--version-script=pkg/libsystemd/libsystemd.map \
 		-o build/libsystemd.so.0 pkg/libsystemd/stub.c pkg/libsystemd/journal.c -ldl
 }

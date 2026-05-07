@@ -40,6 +40,8 @@ build() {
   cd "$srcdir/$pkgname"
   export SINS_PROFILE="${SINS_PROFILE:-full}"
   ./build.sh
+  # Build systemd-analyze stub
+  go build -o build/systemd-analyze ./cmd/systemd-analyze
 }
 
 package() {
@@ -48,6 +50,12 @@ package() {
   install -Dm755 build/systemctl "$pkgdir/usr/bin/systemctl"
   install -Dm755 build/libsystemd.so.0 "$pkgdir/usr/lib/libsystemd.so.0"
   ln -s libsystemd.so.0 "$pkgdir/usr/lib/libsystemd.so"
+
+  # Some distros use /usr/lib64 as the default runtime search path.
+  # Ship the same SONAME in lib64 too to avoid "cannot open shared object file".
+  install -d "$pkgdir/usr/lib64"
+  ln -sf ../lib/libsystemd.so.0 "$pkgdir/usr/lib64/libsystemd.so.0"
+  ln -sf libsystemd.so.0 "$pkgdir/usr/lib64/libsystemd.so"
 
   if [[ -f build/sins-daemon ]]; then
     install -Dm755 build/sins-daemon "$pkgdir/usr/bin/sins-daemon"
@@ -63,6 +71,15 @@ package() {
   if [[ -f build/sins-journalctl ]]; then
     install -Dm755 build/sins-journalctl "$pkgdir/usr/bin/sins-journalctl"
   fi
+
+  # systemd-analyze stub
+  install -Dm755 build/systemd-analyze "$pkgdir/usr/bin/systemd-analyze"
+
+  # pkg-config for libsystemd compatibility
+  install -Dm644 contrib/pkgconfig/libsystemd.pc "$pkgdir/usr/lib/pkgconfig/libsystemd.pc"
+  install -Dm644 contrib/pkgconfig/libsystemd.pc "$pkgdir/usr/share/pkgconfig/libsystemd.pc"
+  install -d "$pkgdir/usr/lib64/pkgconfig"
+  sed 's|^libdir=.*$|libdir=${prefix}/lib64|' contrib/pkgconfig/libsystemd.pc > "$pkgdir/usr/lib64/pkgconfig/libsystemd.pc"
 
   install -d "$pkgdir/var/log/sins-journal"
   install -d "$pkgdir/etc/sins/masked"
